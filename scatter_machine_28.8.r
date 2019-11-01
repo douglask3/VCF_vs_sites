@@ -1,6 +1,7 @@
 ############
 ## setup  ##
 ############
+source("libs/make_col_vector.r")
 library(reldist)
 
 col_choices  = c("savanna" = "#d95f02", "forest" = '#1b9e77')
@@ -24,13 +25,6 @@ is_p_star <- function(P) {
     else out = '***'
     out
 }
-
-make.transparent <- function(col, transparency) {
-     ## Semitransparent colours
-     tmp <- col2rgb(col)/255
-     rgb(tmp[1,], tmp[2,], tmp[3,], alpha=1-transparency)
-}
-
 
 #############
 ## process ##
