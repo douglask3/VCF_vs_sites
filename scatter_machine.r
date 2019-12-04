@@ -8,11 +8,11 @@ source("libs/make.transparent.r")
 source("libs/logit_logistic.r")
 
 col_choices  = c("savanna" = "#d95f02", "forest" = '#1b9e77')
-detail = 0.25
+detail = 0.1
 
 VCF_grid_size = round(c(250,250) * detail) ## size of a vcf pixel
 TRB_grid_size = round(c(100,100) * detail) ## size of a trobit pixel
-n_bootstraps_grid_size  = 10  # number of times we'll test the uncertanty
+n_bootstraps_grid_size  = 3  # number of times we'll test the uncertanty
 pc_test_width = 0.01
 vcf_clumpings = c(0, 2, 4, 8) # How "clumped" are the trees. 0 = no clumping
 pd_sample = seq(0.1, 0.9, 0.1)
@@ -31,10 +31,11 @@ dat[, 'mvcf_pct'] = dat[,'mvcf_pct'] / 0.8
 VCF_grid = matrix(0,VCF_grid_size[1], VCF_grid_size[1])
 VCF_no_cells = VCF_grid_size[1] * VCF_grid_size[2]
 pcs = rep(seq(0, 1, pc_test_width), n_bootstraps_grid_size)
-
-test_clumping <- function(vcf_clumping) {
-    prob = (1:VCF_no_cells)^vcf_clumping
+dat0 = dat
+test_clumping <- function(vcf_clumping, cont = NULL) {
     
+    prob = (1:VCF_no_cells)^vcf_clumping
+    if (!is.null(cont)) dat = dat[dat$continent == cont, ]
     covert_from_VCF_grid <- function(vc_pc, grid_size, plot_clumping = FALSE) {
         print(vc_pc)
         nc = round(vc_pc * VCF_no_cells)
@@ -74,7 +75,7 @@ test_clumping <- function(vcf_clumping) {
         if (plot_clumping) return()
         temp_file = paste('temp/', 'climping', vcf_clumping, 'vcf_pc', vc_pc, 'pc_test_width', pc_test_width, 'nboots', 
                           n_bootstraps_grid_size, 'VCF_grid', VCF_grid_size[1], VCF_grid_size[2], 
-                          'TRB_grid', TRB_grid_size[1], TRB_grid_size[2], '.csv', sep = '-')
+                          'TRB_grid', TRB_grid_size[1], TRB_grid_size[2], 'cont', cont, '.csv', sep = '-')
                           
         
         if(file.exists(temp_file) && grabe_cache) {
@@ -169,12 +170,18 @@ test_clumping <- function(vcf_clumping) {
 }
 ## add the legend
 graphics.off()
-png("figs/tribit_vs_VCF.png", height = 10, width = 7.5, res = 300, units = 'in')
-    layout(rbind(2:1, 4:3, 6:5, 8:7))
-    par(mar = c(1, 1, 1, 0.5), oma = c(3, 3 , 1, 0))
-    lapply(vcf_clumpings, test_clumping)
-    axis(1)
-    legend('topleft', legend = names(col_choices), col = col_choices, pch = 19)
-    mtext("Trobit cover (%)", side = 1, line = 2.5)
-    mtext("VCF cover (%)", side = 2, line = 1.5, outer = TRUE)
-dev.off()
+run4Continent <- function(cont = NULL) {
+    fname = paste("figs/tribit_vs_VCF", '-', cont, ".png")
+    png(fname, height = 10, width = 7.5, res = 300, units = 'in')
+        layout(rbind(2:1, 4:3, 6:5, 8:7))
+        par(mar = c(1, 1, 1, 0.5), oma = c(3, 3 , 1, 0))
+        lapply(vcf_clumpings, test_clumping, cont)
+        axis(1)
+        legend('topleft', legend = names(col_choices), col = col_choices, pch = 19)
+        mtext("Trobit cover (%)", side = 1, line = 2.5)
+        mtext("VCF cover (%)", side = 2, line = 1.5, outer = TRUE)
+    dev.off()
+}
+
+lapply( unique(dat$continent), run4Continent)
+run4Continent()
