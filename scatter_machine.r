@@ -3,6 +3,8 @@
 ############
 library(reldist)
 library(fields)
+source("libs/is_p_star.r")
+source("libs/make.transparent.r")
 
 col_choices  = c("savanna" = "#d95f02", "forest" = '#1b9e77')
 detail = 0.25
@@ -19,22 +21,6 @@ grabe_cache = TRUE
 ## some required functions
 logit <- function(x) log(x/(1-x))
 logistic <- function(x) 1/(1+exp(-x))
-
-is_p_star <- function(P) {
-    if (P > 0.1) out = ' '
-    else if (P > 0.05) out = '.'
-    else if (P > 0.01) out = '*'
-    else if (P > 0.001) out = '**'
-    else out = '***'
-    out
-}
-
-make.transparent <- function(col, transparency) {
-     ## Semitransparent colours
-     tmp <- col2rgb(col)/255
-     rgb(tmp[1,], tmp[2,], tmp[3,], alpha=1-transparency)
-}
-
 
 #############
 ## process ##
