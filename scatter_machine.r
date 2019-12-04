@@ -79,26 +79,15 @@ test_clumping <- function(vcf_clumping) {
         
         if(file.exists(temp_file) && grabe_cache) {
             Ys = read.csv(temp_file)[,1]
-        } else {
-            
+        } else {            
             Ys = sapply(pcs, testY)
             write.csv(Ys, temp_file, row.names = FALSE)
         }
         return(Ys)
-        #wtd.quantile(pcs, q = pd_sample, weight = Ys)
     }
     covert_from_VCF_grid(0.5, TRB_grid_size, TRUE)
     TRB_equivilent = t(sapply(dat[, 'mvcf_pct']/100, covert_from_VCF_grid, TRB_grid_size)*100)
     
-    
-    ## for each vcf %, we get back the 0.1, 0.5, and 0.9 of the prob density function.
-    ## 0.5 will be the point, while 0.1 to 0.9 will be our error bars
-    
-    #colnames(TRB_equivilent) = paste0('trob_vcf', pcs)
-
-    ## tag on vcf % and forest type. We then have all the info we need for plotting
-    #TRB_equivilent = cbind(dat[, c("trobit_pct", 'forest_type')], TRB_equivilent)
-
 
     ##########
     ## plot ##
