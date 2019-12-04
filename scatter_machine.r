@@ -1,17 +1,18 @@
 ############
 ## setup  ##
 ############
-source("libs/make_col_vector.r")
 library(reldist)
 
 col_choices  = c("savanna" = "#d95f02", "forest" = '#1b9e77')
-detail = 1
+detail = 0.25
 
-VCF_grid_size = 250*250 * detail^2 ## size of a vcf pixel
-TRB_grid_size = 100*100 * detail^2 ## size of a trobit pixel
-n_bootstraps_grid_size  = 1000  # number of times we'll test the uncertanty
-pc_test_width = 0.01
+VCF_grid_size = round(c(250,250) * detail) ## size of a vcf pixel
+TRB_grid_size = round(c(100,100) * detail) ## size of a trobit pixel
+n_bootstraps_grid_size  = 2  # number of times we'll test the uncertanty
+pc_test_width = 0.04
 vcf_clumping = 0 # How "clumped" are the trees. 0 = no clumping
+
+grabe_cache = TRUE
 
 ## some required functions
 logit <- function(x) log(x/(1-x))
@@ -26,6 +27,13 @@ is_p_star <- function(P) {
     out
 }
 
+make.transparent <- function(col, transparency) {
+     ## Semitransparent colours
+     tmp <- col2rgb(col)/255
+     rgb(tmp[1,], tmp[2,], tmp[3,], alpha=1-transparency)
+}
+
+
 #############
 ## process ##
 #############
@@ -35,27 +43,43 @@ dat[, 'mvcf_pct'] = dat[,'mvcf_pct'] / 0.8
 
 
 ## finds the probablity density of % cover of a VCF size grid based on a trobit measurement
+VCF_grid = matrix(0,VCF_grid_size[1], VCF_grid_size[1])
+VCF_no_cells = VCF_grid_size[1] * VCF_grid_size[2]
+prob = (1:VCF_no_cells)^vcf_clumping
+
 covert_from_VCF_grid <- function(vc_pc, grid_size) {
     print(vc_pc)
-    Y = rep(0,VCF_grid_size)
-    nc = round(vc_pc * VCF_grid_size)
-    prob = (1:VCF_grid_size)^vcf_clumping
-    testY <- function(pc) {        
-        index = sample(1:VCF_grid_size, nc, FALSE, prob = prob)
-        Y[index] = 1
+       
+    nc = round(vc_pc * VCF_no_cells)
+    
+    testY <- function(pc) {
+        index = sample(1:VCF_no_cells, nc, FALSE, prob = prob)
+        VCF_grid[index] = 1
 
-        testXpos <- function(i) {
-            mn = mean(Y[i:(i+ grid_size)])
+        testXpos <- function(i, j) {
+            mn = mean(VCF_grid[i:(i+ grid_size[1]),j:(j+ grid_size[1])])
             abs(mn - pc) < 0.1
         }
-        mean(sapply(1:(VCF_grid_size - grid_size), testXpos))
+        
+        testYpos <- function(i) sapply(1:(VCF_grid_size[2] - grid_size[2]), function(j) testXpos(i,j))
+        mean(sapply(1:(VCF_grid_size[1] - grid_size[1]), testYpos))
     }
 
+    temp_file = paste('temp/', 'climping', vcf_clumping, 'vcf_pc', vc_pc, 'pc_test_width', pc_test_width, 'nboots', 
+                      n_bootstraps_grid_size, 'VCF_grid', VCF_grid_size[1], VCF_grid_size[2], 
+                      'TRB_grid', TRB_grid_size[1], TRB_grid_size[2], '.csv', sep = '-')
+                      
     pcs = rep(seq(0, 1, pc_test_width), n_bootstraps_grid_size)
     
-    Ys = sapply(pcs, testY)
+    if(file.exists(temp_file) && grabe_cache) {
+        Ys = read.csv(temp_file)[,1]
+    } else {
+        
+        Ys = sapply(pcs, testY)
+        write.csv(Ys, temp_file, row.names = FALSE)
+    }
     #c(wtd.mean(pcs, Ys) + c(-1, 0, 1) * sqrt(wtd.var(pcs, Ys)))
-    wtd.quantile(pcs, q = c(0.3413447, 0.5, 0.6826894), weight = Ys)
+    wtd.quantile(pcs, q = c(0.32, 0.5, 0.68), weight = Ys)
 }
 TRB_equivilent = t(sapply(dat[, 'mvcf_pct']/100, covert_from_VCF_grid, TRB_grid_size)*100)
 
