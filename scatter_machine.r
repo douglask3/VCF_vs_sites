@@ -5,6 +5,7 @@ library(reldist)
 library(fields)
 source("libs/is_p_star.r")
 source("libs/make.transparent.r")
+source("libs/logit_logistic.r")
 
 col_choices  = c("savanna" = "#d95f02", "forest" = '#1b9e77')
 detail = 0.25
@@ -17,10 +18,6 @@ vcf_clumpings = c(0, 2, 4, 8) # How "clumped" are the trees. 0 = no clumping
 pd_sample = seq(0.1, 0.9, 0.1)
 
 grabe_cache = TRUE
-
-## some required functions
-logit <- function(x) log(x/(1-x))
-logistic <- function(x) 1/(1+exp(-x))
 
 #############
 ## process ##
