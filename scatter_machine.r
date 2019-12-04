@@ -167,7 +167,7 @@ test_clumping <- function(vcf_clumping) {
     add_trend_line("savanna")
     mtext(side = 3, paste("Clumping", vcf_clumping))
 }
-## add teh legend
+## add the legend
 graphics.off()
 png("figs/tribit_vs_VCF.png", height = 10, width = 7.5, res = 300, units = 'in')
     layout(rbind(2:1, 4:3, 6:5, 8:7))
