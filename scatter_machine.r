@@ -9,7 +9,6 @@ source("libs/logit_logistic.r")
 
 col_choices  = c("savanna" = "#d95f02", "forest" = '#1b9e77')
 detail = 0.1
-
 VCF_grid_size = round(c(250,250) * detail) ## size of a vcf pixel
 TRB_grid_size = round(c(100,100) * detail) ## size of a trobit pixel
 n_bootstraps_grid_size  = 3  # number of times we'll test the uncertanty
@@ -53,8 +52,7 @@ test_clumping <- function(vcf_clumping, cont = NULL) {
                 
                 x = sample(1:(VCF_grid_size[1] - grid_size[1] - 1), 4, replace = FALSE)
                 y = sample(1:(VCF_grid_size[2] - grid_size[2] - 1), 4, replace = FALSE)
-                addbox <- function(i) {
-                    
+                addbox <- function(i) {                    
                     x = x[i] + c(0, 0, grid_size[1], grid_size[1], 0)
                     y = y[i] + c(0, grid_size[2], grid_size[2], 0, 0)
                     lines(x, y, col = 'black', lty = i, lwd = 1.5)
@@ -115,7 +113,7 @@ test_clumping <- function(vcf_clumping, cont = NULL) {
            length=0.05, angle=90, code=3, col = cols)
            
     ## add trend lines
-    add_trend_line <- function(type = NULL) {
+    add_trend_line <- function(type = NULL, l = 0) {
         
         x = dat[,"trobit_pct"] / 100 # x is our trobit medians
         y = pcs # y is our vcf value
@@ -160,12 +158,17 @@ test_clumping <- function(vcf_clumping, cont = NULL) {
         ## add best fit
         lines(x, y[,1], col = col, lwd = 2)
         polygon(c(x, rev(x)), c(y[,2],rev(y[,3])), col = make.transparent(col, 0.67), border = NA)
+        text(x = 10, y = 100 - l,  paste("R2:", round(summary(fit)$r.squared, 3)), col = col)
+        
+        p =  summary(fit)[[5]][,4][2]
+        p = paste(round(p, 3), is_p_star(p))
+        text(x = 25, y = 100 - l,  p, col = col)
     }
 
     ## run for all and "forest", "savanna"
-    add_trend_line()
-    add_trend_line("forest")
-    add_trend_line("savanna")
+    add_trend_line(l = 0)
+    try(add_trend_line("forest", l = 10))
+    try(add_trend_line("savanna", l = 20))
     mtext(side = 3, paste("Clumping", vcf_clumping))
 }
 ## add the legend
@@ -173,12 +176,14 @@ graphics.off()
 run4Continent <- function(cont = NULL) {
     fname = paste("figs/tribit_vs_VCF", '-', cont, ".png")
     png(fname, height = 10, width = 7.5, res = 300, units = 'in')
-        layout(rbind(2:1, 4:3, 6:5, 8:7))
-        par(mar = c(1, 1, 1, 0.5), oma = c(3, 3 , 1, 0))
+        layout(rbind(2:1, 4:3, 6:5, 8:7, 9), heights = c(1, 1, 1, 1, 0.3))
+        par(mar = c(1, 1, 1, 0.5), oma = c(0, 3 , 1, 0))
         lapply(vcf_clumpings, test_clumping, cont)
         axis(1)
-        legend('topleft', legend = names(col_choices), col = col_choices, pch = 19)
-        mtext("Trobit cover (%)", side = 1, line = 2.5)
+        plot.new()
+        par(mar = rep(0, 4))    
+        legend('bottom', legend = names(col_choices), col = col_choices, pch = 19, horiz = TRUE, bty = 'n')
+        mtext("Trobit cover (%)", side = 1, line = -3.5)
         mtext("VCF cover (%)", side = 2, line = 1.5, outer = TRUE)
     dev.off()
 }
