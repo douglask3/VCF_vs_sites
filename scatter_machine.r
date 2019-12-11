@@ -14,7 +14,7 @@ TRB_grid_size = round(c(100,100) * detail) ## size of a trobit pixel
 n_bootstraps_grid_size  = 3  # number of times we'll test the uncertanty
 pc_test_width = 0.01
 vcf_clumpings = c(0, 2, 4, 8) # How "clumped" are the trees. 0 = no clumping
-CAI_shade_p = 1
+CAI_shade_ps = c(0, 0.1, 0.2, 0.5, 1)
 pd_sample = seq(0.1, 0.9, 0.1)
 
 var = "trobit_pct"
@@ -31,37 +31,41 @@ dat = read.csv( 'data/trobit_vcf_comparison.csv')
 if (var == "trobit_pct")
     dat[, 'mvcf_pct'] = dat[,'mvcf_pct'] / 0.8
 
-
-if (var == "CAI") {
-    CAI_to_cover <- function(cai) {
-        #grid = matrix(0, ncol = 10, nrow = 10)
-        nc = 100#(nrow(grid) * ncol(grid))
-        prob = prob = (1:nc)^CAI_shade_p
-        index = rep(0, nc)
-        for (i in 1:round(nc * cai)) {
-            i = sample(1:nc, 1,replace = TRUE, prob = prob)
-            #prob[i] = prob[i]/CAI_shade_p
-            index[i] = 1
-        }
-        cover = sum(index)/nc
-    }
-    
-    temp_file = paste('temp/TRB_cover_eq', 'CAIpow', CAI_shade_p, '.Rd', sep = '-')
-    if (file.exists(temp_file) && grabe_cache) load(temp_file)
-    else {
-        cover_eq = sapply(1:100, function(i) sapply(dat[,var], CAI_to_cover))
-        cover_eq = cover_eq * 100
-        write.csv(cover_eq, file = temp_file)
-    }
-}
-
 ## finds the probablity density of % cover of a VCF size grid based on a trobit measurement
 VCF_grid = matrix(0,VCF_grid_size[1], VCF_grid_size[1])
 VCF_no_cells = VCF_grid_size[1] * VCF_grid_size[2]
 pcs = rep(seq(0, 1, pc_test_width), n_bootstraps_grid_size)
 
-test_clumping <- function(vcf_clumping, cont = NULL) {
+find_TRB_area <- function(CAI_shade_p) {
     
+    if (var == "CAI") {
+        CAI_to_cover <- function(cai) {
+            #grid = matrix(0, ncol = 10, nrow = 10)
+            nc = 100#(nrow(grid) * ncol(grid))
+            prob = prob = (1:nc)^CAI_shade_p
+            index = rep(0, nc)
+            for (i in 1:round(nc * cai)) {
+                i = sample(1:nc, 1,replace = TRUE, prob = prob)
+                #prob[i] = prob[i]/CAI_shade_p
+                index[i] = 1
+            }
+            cover = sum(index)/nc
+        }
+        
+        temp_file = paste('temp/TRB_cover_eq', 'CAIpower', CAI_shade_p, '.Rd', sep = '-')
+        if (file.exists(temp_file) && grabe_cache) load(temp_file)
+        else {
+            cover_eq = sapply(1:100, function(i) sapply(dat[,var], CAI_to_cover))
+            cover_eq = cover_eq * 100
+            save(cover_eq, file = temp_file)
+        }
+    }
+    return(cover_eq)
+}
+
+
+test_clumping <- function(vcf_clumping, CAI_shade_p = 0, cont = NULL) {
+    if (var == "CAI") cover_eq = find_TRB_area(CAI_shade_p)
     prob = (1:VCF_no_cells)^vcf_clumping
     if (!is.null(cont)) {
         test = dat$continent == cont
@@ -116,7 +120,7 @@ test_clumping <- function(vcf_clumping, cont = NULL) {
         }
         return(Ys)
     }
-    covert_from_VCF_grid(0.5, TRB_grid_size, TRUE)
+    if (length(CAI_shade_ps) <= 1)covert_from_VCF_grid(0.5, TRB_grid_size, TRUE)
     TRB_equivilent = t(sapply(dat[, 'mvcf_pct']/100, covert_from_VCF_grid, TRB_grid_size)*100)
     
 
@@ -126,9 +130,10 @@ test_clumping <- function(vcf_clumping, cont = NULL) {
     cols = col_choices[(dat[, "forest_type"] == "forest")+1]
 
     ## set up 
-    plot(c(0, 100), c(0, 100), xlab = "", ylab = "", type = 'n', xaxt = 'n')
+    plot(c(0, 100), c(0, 100), xlab = "", ylab = "", type = 'n', xaxt = 'n', yaxt = 'n')
     grid()
     lines(c(0, 100), c(0, 100), lty = 2, lwd = 2)
+    lines(c(0, 100), c(0, 80), lty = 2, lwd = 2)
     #text(0, c(95, 90), c('k:', 'x0:'), adj = 0)
 
     ## add points
@@ -204,30 +209,60 @@ test_clumping <- function(vcf_clumping, cont = NULL) {
         p =  summary(fit)[[5]][,4][2]
         p = paste(round(p, 3), is_p_star(p))
         text(x = 25, y = 100 - l,  p, col = col)
+        return(fit)
     }
 
     ## run for all and "forest", "savanna"
-    add_trend_line(l = 0)
-    try(add_trend_line("forest", l = 10))
-    try(add_trend_line("savanna", l = 20))
-    mtext(side = 3, paste("Clumping", vcf_clumping))
+    fitAll = add_trend_line(l = 0)
+    fitFor = try(add_trend_line("forest", l = 10))
+    fitSav = try(add_trend_line("savanna", l = 20))
+    
+    
+    
+    if (length(CAI_shade_ps)>1) {
+        if (CAI_shade_p == tail(CAI_shade_ps,1)) axis(4)
+        
+        side = 2
+    } else side = 3
+    if (CAI_shade_p == CAI_shade_ps[1]) {
+        axis(2)
+        mtext(side = side, paste("Clumping", vcf_clumping), line = 2.2)
+    }
+    if (length(vcf_clumpings)>1 && vcf_clumping == vcf_clumpings[1]) {        
+        mtext(side = 3, paste("Leaf overlap", CAI_shade_p), line = 2)
+        axis(3)
+    }
+    if (vcf_clumping == tail(vcf_clumpings,1)) axis(1)
+    return(list(fitAll, fitFor, fitSav))
 }
+
 ## add the legend
 graphics.off()
 run4Continent <- function(cont = NULL) {
     fname = paste("figs/tribit_vs_VCF", '-', cont, ".png")
-    png(fname, height = 10, width = 7.5, res = 300, units = 'in')
-        layout(rbind(2:1, 4:3, 6:5, 8:7, 9), heights = c(1, 1, 1, 1, 0.3))
-        par(mar = c(1, 1, 1, 0.5), oma = c(0, 3 , 1, 0))
-        lapply(vcf_clumpings, test_clumping, cont)
-        axis(1)
+    if (is.null(CAI_shade_ps)) CAI_shade_ps = 0
+    if (var == "CAI" && length(CAI_shade_ps) > 1)
+        lmat = matrix(1:(length(vcf_clumpings) * length(CAI_shade_ps)), ncol = length(CAI_shade_ps))
+    else
+        lmat = t(matrix(1:(length(vcf_clumpings)*2), nrow = 2))[,c(2,1)]
+    
+    
+    heights = c(rep(1, nrow(lmat)), 0.3)
+    lmat = rbind(lmat, max(lmat) + 1)
+    
+    png(fname, height = sum(heights)*2.33, width = 3.75 * ncol(lmat), res = 300, units = 'in')
+        layout(lmat, heights = heights)
+        
+        par(mar = c(1, 1, 1, 0.5), oma = c(0, 4.5, 2.5, 1.5))
+        fits = lapply(CAI_shade_ps, function(CAI_shade_p) lapply(vcf_clumpings, test_clumping, CAI_shade_p, cont))
+        
         plot.new()
         par(mar = rep(0, 4))    
         legend('bottom', legend = names(col_choices), col = col_choices, pch = 19, horiz = TRUE, bty = 'n')
         mtext("Trobit cover (%)", side = 1, line = -3.5)
-        mtext("VCF cover (%)", side = 2, line = 1.5, outer = TRUE)
+        mtext("VCF cover (%)", side = 2, line = 2.6, outer = TRUE)
     dev.off()
 }
 
-lapply( unique(dat$continent), run4Continent)
-run4Continent()
+#lapply( unique(dat$continent), run4Continent)
+fits = run4Continent()
