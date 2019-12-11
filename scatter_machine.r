@@ -14,7 +14,11 @@ TRB_grid_size = round(c(100,100) * detail) ## size of a trobit pixel
 n_bootstraps_grid_size  = 3  # number of times we'll test the uncertanty
 pc_test_width = 0.01
 vcf_clumpings = c(0, 2, 4, 8) # How "clumped" are the trees. 0 = no clumping
+CAI_shade_p = 1
 pd_sample = seq(0.1, 0.9, 0.1)
+
+var = "trobit_pct"
+var = "CAI"
 
 grabe_cache = TRUE
 
@@ -23,22 +27,50 @@ grabe_cache = TRUE
 #############
 ## open data
 dat = read.csv( 'data/trobit_vcf_comparison.csv')
-dat[, 'mvcf_pct'] = dat[,'mvcf_pct'] / 0.8
 
+if (var == "trobit_pct")
+    dat[, 'mvcf_pct'] = dat[,'mvcf_pct'] / 0.8
+
+
+if (var == "CAI") {
+    CAI_to_cover <- function(cai) {
+        #grid = matrix(0, ncol = 10, nrow = 10)
+        nc = 100#(nrow(grid) * ncol(grid))
+        prob = prob = (1:nc)^CAI_shade_p
+        index = rep(0, nc)
+        for (i in 1:round(nc * cai)) {
+            i = sample(1:nc, 1,replace = TRUE, prob = prob)
+            #prob[i] = prob[i]/CAI_shade_p
+            index[i] = 1
+        }
+        cover = sum(index)/nc
+    }
+    
+    temp_file = paste('temp/TRB_cover_eq', 'CAIpow', CAI_shade_p, '.Rd', sep = '-')
+    if (file.exists(temp_file) && grabe_cache) load(temp_file)
+    else {
+        cover_eq = sapply(1:100, function(i) sapply(dat[,var], CAI_to_cover))
+        cover_eq = cover_eq * 100
+        write.csv(cover_eq, file = temp_file)
+    }
+}
 
 ## finds the probablity density of % cover of a VCF size grid based on a trobit measurement
 VCF_grid = matrix(0,VCF_grid_size[1], VCF_grid_size[1])
 VCF_no_cells = VCF_grid_size[1] * VCF_grid_size[2]
 pcs = rep(seq(0, 1, pc_test_width), n_bootstraps_grid_size)
-dat0 = dat
+
 test_clumping <- function(vcf_clumping, cont = NULL) {
     
     prob = (1:VCF_no_cells)^vcf_clumping
-    if (!is.null(cont)) dat = dat[dat$continent == cont, ]
+    if (!is.null(cont)) {
+        test = dat$continent == cont
+        dat = dat[test, ]
+        if (var == "CAI") cover_eq = cover_eq[test,]
+    }
     covert_from_VCF_grid <- function(vc_pc, grid_size, plot_clumping = FALSE) {
-        print(vc_pc)
         nc = round(vc_pc * VCF_no_cells)
-        
+        print(vc_pc)
         testY <- function(pc) {
             index = sample(1:VCF_no_cells, nc, FALSE, prob = prob)
             VCF_grid[index] = 1
@@ -102,20 +134,29 @@ test_clumping <- function(vcf_clumping, cont = NULL) {
     ## add points
     find_VCF_pd_point <- function(x, pd_sample) reldist::wtd.quantile(pcs, q = pd_sample, weight = x) * 100
     VCF_med = apply(TRB_equivilent, 1, find_VCF_pd_point, 0.5)
-    
-    points(dat[,"trobit_pct"], VCF_med, pch = 19, col = cols)
-    points(dat[,"trobit_pct"], VCF_med)
-
-    ## add error bars    
     VCF_low  = apply(TRB_equivilent, 1, find_VCF_pd_point, 0.32)
     VCF_high = apply(TRB_equivilent, 1, find_VCF_pd_point, 0.68)
-    arrows(dat[,"trobit_pct"], VCF_low, dat[,"trobit_pct"], VCF_high,
+    
+    if (var == "CAI") {
+        TRB_mid  = apply(cover_eq, 1, quantile, 0.5)
+        TRB_low  = apply(cover_eq, 1, quantile, 0.32)
+        TRB_high = apply(cover_eq, 1, quantile, 0.68)
+        arrows(TRB_low, VCF_med, TRB_high, VCF_med,
+           length=0.05, angle=90, code=3, col = cols)
+    } else {
+        TRB_mid = dat[,"trobit_pct"]
+    }
+    
+    points(TRB_mid, VCF_med, pch = 19, col = cols)
+    points(TRB_mid, VCF_med)
+    ## add error bars    
+    arrows(TRB_mid, VCF_low, TRB_mid, VCF_high,
            length=0.05, angle=90, code=3, col = cols)
            
     ## add trend lines
     add_trend_line <- function(type = NULL, l = 0) {
         
-        x = dat[,"trobit_pct"] / 100 # x is our trobit medians
+        x = TRB_mid / 100 # x is our trobit medians
         y = pcs # y is our vcf value
         
         # if we're looking at just savanna or forest, we'll just grab those bits of data
