@@ -8,10 +8,10 @@ source("libs/make.transparent.r")
 source("libs/logit_logistic.r")
 
 col_choices  = c("savanna" = "#d95f02", "forest" = '#1b9e77')
-detail = 0.1
+detail = 0.2
 VCF_grid_size = round(c(250,250) * detail) ## size of a vcf pixel
 TRB_grid_size = round(c(100,100) * detail) ## size of a trobit pixel
-n_bootstraps_grid_size  = 3  # number of times we'll test the uncertanty
+n_bootstraps_grid_size  = 5  # number of times we'll test the uncertanty
 pc_test_width = 0.01
 vcf_clumpings = c(0, 2, 4, 8) # How "clumped" are the trees. 0 = no clumping
 CAI_shade_ps = c(0, 0.1, 0.2, 0.5, 1)
@@ -28,8 +28,8 @@ grabe_cache = TRUE
 ## open data
 dat = read.csv( 'data/trobit_vcf_comparison.csv')
 
-if (var == "trobit_pct")
-    dat[, 'mvcf_pct'] = dat[,'mvcf_pct'] / 0.8
+#if (var == "trobit_pct")
+dat[, 'mvcf_pct'] = dat[,'mvcf_pct'] / 0.8
 
 ## finds the probablity density of % cover of a VCF size grid based on a trobit measurement
 VCF_grid = matrix(0,VCF_grid_size[1], VCF_grid_size[1])
@@ -63,6 +63,19 @@ find_TRB_area <- function(CAI_shade_p) {
     return(cover_eq)
 }
 
+plot.window <- function() {
+    plot(c(0, 100), c(0, 100), xlab = "", ylab = "", type = 'n', xaxt = 'n', yaxt = 'n')
+    grid()
+    lines(c(0, 100), c(0, 100), lty = 2, lwd = 2)
+#    lines(c(0, 100), c(0, 80), lty = 2, lwd = 2)
+}
+
+bestFit <- function(x, y, col, alpha = 0.67) {
+    lines(x, y[,1], col = col, lwd = 2)
+    lines(x, y[,2], col = col, lty = 1, lwd = 1)
+    lines(x, y[,3], col = col, lty = 1, lwd = 1)
+    polygon(c(x, rev(x)), c(y[,2],rev(y[,3])), col = make.transparent(col, alpha), border = NA)
+}
 
 test_clumping <- function(vcf_clumping, CAI_shade_p = 0, cont = NULL) {
     if (var == "CAI") cover_eq = find_TRB_area(CAI_shade_p)
@@ -130,12 +143,7 @@ test_clumping <- function(vcf_clumping, CAI_shade_p = 0, cont = NULL) {
     cols = col_choices[(dat[, "forest_type"] == "forest")+1]
 
     ## set up 
-    plot(c(0, 100), c(0, 100), xlab = "", ylab = "", type = 'n', xaxt = 'n', yaxt = 'n')
-    grid()
-    lines(c(0, 100), c(0, 100), lty = 2, lwd = 2)
-    lines(c(0, 100), c(0, 80), lty = 2, lwd = 2)
-    #text(0, c(95, 90), c('k:', 'x0:'), adj = 0)
-
+    plot.window()
     ## add points
     find_VCF_pd_point <- function(x, pd_sample) reldist::wtd.quantile(pcs, q = pd_sample, weight = x) * 100
     VCF_med = apply(TRB_equivilent, 1, find_VCF_pd_point, 0.5)
@@ -201,15 +209,14 @@ test_clumping <- function(vcf_clumping, CAI_shade_p = 0, cont = NULL) {
         x = logistic(x)*100
         y = logistic(y)*100
         
-        ## add best fit
-        lines(x, y[,1], col = col, lwd = 2)
-        polygon(c(x, rev(x)), c(y[,2],rev(y[,3])), col = make.transparent(col, 0.67), border = NA)
+        ## add best fit       
+        bestFit(x, y, col)
         text(x = 10, y = 100 - l,  paste("R2:", round(summary(fit)$r.squared, 3)), col = col)
         
         p =  summary(fit)[[5]][,4][2]
         p = paste(round(p, 3), is_p_star(p))
         text(x = 25, y = 100 - l,  p, col = col)
-        return(fit)
+        return(cbind(x, y))
     }
 
     ## run for all and "forest", "savanna"
@@ -229,7 +236,7 @@ test_clumping <- function(vcf_clumping, CAI_shade_p = 0, cont = NULL) {
         mtext(side = side, paste("Clumping", vcf_clumping), line = 2.2)
     }
     if (length(vcf_clumpings)>1 && vcf_clumping == vcf_clumpings[1]) {        
-        mtext(side = 3, paste("Leaf overlap", CAI_shade_p), line = 2)
+        mtext(side = 3, paste("Canopy overlap", CAI_shade_p), line = 2)
         axis(3)
     }
     if (vcf_clumping == tail(vcf_clumpings,1)) axis(1)
@@ -239,7 +246,7 @@ test_clumping <- function(vcf_clumping, CAI_shade_p = 0, cont = NULL) {
 ## add the legend
 graphics.off()
 run4Continent <- function(cont = NULL) {
-    fname = paste("figs/tribit_vs_VCF", '-', cont, ".png")
+    fname = paste0("figs/tribit_vs_VCF", '-', cont, ".png")
     if (is.null(CAI_shade_ps)) CAI_shade_ps = 0
     if (var == "CAI" && length(CAI_shade_ps) > 1)
         lmat = matrix(1:(length(vcf_clumpings) * length(CAI_shade_ps)), ncol = length(CAI_shade_ps))
@@ -262,7 +269,57 @@ run4Continent <- function(cont = NULL) {
         mtext("Trobit cover (%)", side = 1, line = -3.5)
         mtext("VCF cover (%)", side = 2, line = 2.6, outer = TRUE)
     dev.off()
+    return(fits)
 }
 
 #lapply( unique(dat$continent), run4Continent)
 fits = run4Continent()
+
+fits = fits[c(1, length(fits))]
+for (i in 1:length(fits)) fits[[i]] = fits[[i]][c(1, length(fits[[i]]))]
+
+
+
+cols_cai = c("black", "red")
+cols_clu = c("black", "blue")
+
+cols_cai =  make_col_vector(cols_cai, ncols = length(fits))
+cols_clu =  make_col_vector(cols_clu, ncols = length(fits[[1]]))
+
+cols = lapply(cols_cai, function(col1) lapply(cols_clu, function(col2) make_col_vector(c(col1, col2), ncol =3)[2]))
+bestFit_fun <- function(fit, type,...) 
+    bestFit(fit[[type]][,1], fit[[type]][, -1], alpha = 0.75,...)
+
+plotType <- function(type, name) {
+    plot.window()
+    mtext(name, side = 3, line = -1)
+    mapply(function(i, j) mapply(bestFit_fun, i, j, type = type), fits, cols)
+}
+
+png("figs/Clumping_canopy_overlap_extremes.png", height = 6, width =8, res = 300, units = 'in')
+    par(mfrow = c(2,2), mar = c(1, 1, 1, 0.5), oma = c(3, 4.5, 2.5, 1.5))
+    plotType(1, "All")
+    axis(2)
+    plotType(2, "Forest")
+    axis(1)
+    plotType(3, "Savanna")
+    axis(2)
+    axis(1)
+
+    mtext("Trobit cover (%)", side = 1, line = 2.5)
+    mtext("VCF cover (%)", side = 2, line = 1.5, outer = TRUE)
+
+    plot(c(0, 1), c(0, 1), type = 'n', axes = FALSE)
+    bestFit(c(0.1, 0.4), cbind(c(0.85, 0.85), c(0.8, 0.8), c(0.9, 0.9)), cols[[1]][[1]])
+    text(adj = 0, x = 0.5, y = 0.85, paste("Clumping:", vcf_clumpings[1], "\nCanopy overlap:", CAI_shade_ps[1]))
+
+    bestFit(c(0.1, 0.4), cbind(c(0.65, 0.65), c(0.6, 0.6), c(0.7, 0.7)), cols[[2]][[1]])
+    text(adj = 0, x = 0.5, y = 0.65, paste("Clumping:", vcf_clumpings[1], "\nCanopy overlap:", tail(CAI_shade_ps,1)))
+
+
+    bestFit(c(0.1, 0.4), cbind(c(0.45, 0.45), c(0.4, 0.4), c(0.5, 0.5)), cols[[1]][[2]])
+    text(adj = 0, x = 0.5, y = 0.45, paste("Clumping:", tail(vcf_clumpings,1), "\nCanopy overlap:", CAI_shade_ps[1]))
+
+    bestFit(c(0.1, 0.4), cbind(c(0.25, 0.25), c(0.2, 0.2), c(0.3, 0.3)), cols[[2]][[2]])
+    text(adj = 0, x = 0.5, y = 0.25, paste("Clumping:", tail(vcf_clumpings,1), "\nCanopy overlap:", tail(CAI_shade_ps,1)))
+dev.off()
