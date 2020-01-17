@@ -5,16 +5,18 @@ library(reldist)
 library(fields)
 source("libs/is_p_star.r")
 source("libs/make.transparent.r")
+source("libs/make_col_vector.r")
 source("libs/logit_logistic.r")
+source("libs/text.units.r")
 
 col_choices  = c("savanna" = "#d95f02", "forest" = '#1b9e77')
-detail = 0.2
+detail = 0.1 # 0.2
 VCF_grid_size = round(c(250,250) * detail) ## size of a vcf pixel
 TRB_grid_size = round(c(100,100) * detail) ## size of a trobit pixel
-n_bootstraps_grid_size  = 5  # number of times we'll test the uncertanty
-pc_test_width = 0.01
-vcf_clumpings = c(0, 2, 4, 8) # How "clumped" are the trees. 0 = no clumping
-CAI_shade_ps = c(0, 0.1, 0.2, 0.5, 1)
+n_bootstraps_grid_size  = 2  # 5 number of times we'll test the uncertanty
+pc_test_width = 0.01 # 0.01
+vcf_clumpings = c(0, 2, 4, 1000  ) # How "clumped" are the trees. 0 = no clumping
+CAI_shade_ps = c(0, 0.1, 0.5, 1)
 pd_sample = seq(0.1, 0.9, 0.1)
 
 var = "trobit_pct"
@@ -79,6 +81,7 @@ bestFit <- function(x, y, col, alpha = 0.67) {
 
 test_clumping <- function(vcf_clumping, CAI_shade_p = 0, cont = NULL) {
     if (var == "CAI") cover_eq = find_TRB_area(CAI_shade_p)
+    # prob = NULL#round((1:VCF_no_cells)/VCF_no_cells)
     prob = (1:VCF_no_cells)^vcf_clumping
     if (!is.null(cont)) {
         test = dat$continent == cont
@@ -89,7 +92,8 @@ test_clumping <- function(vcf_clumping, CAI_shade_p = 0, cont = NULL) {
         nc = round(vc_pc * VCF_no_cells)
         print(vc_pc)
         testY <- function(pc) {
-            index = sample(1:VCF_no_cells, nc, FALSE, prob = prob)
+            if (vcf_clumping > 100) index = 1:nc
+            else index = sample(1:VCF_no_cells, nc, FALSE, prob = prob)
             VCF_grid[index] = 1
             if (plot_clumping) {
                 grid = list(x = 1:VCF_grid_size[1], y = 1:VCF_grid_size[2], z = VCF_grid)
@@ -216,7 +220,8 @@ test_clumping <- function(vcf_clumping, CAI_shade_p = 0, cont = NULL) {
         p =  summary(fit)[[5]][,4][2]
         p = paste(round(p, 3), is_p_star(p))
         text(x = 25, y = 100 - l,  p, col = col)
-        return(cbind(x, y))
+          
+        return(list(cbind(x, y),  cbind(confint(fit), coef(fit))[,c(1, 3, 2)]))
     }
 
     ## run for all and "forest", "savanna"
@@ -233,7 +238,9 @@ test_clumping <- function(vcf_clumping, CAI_shade_p = 0, cont = NULL) {
     } else side = 3
     if (CAI_shade_p == CAI_shade_ps[1]) {
         axis(2)
-        mtext(side = side, paste("Clumping", vcf_clumping), line = 2.2)
+        if (vcf_clumping > 100) txt = bquote(paste( .("Clumping   "), .(bquote(infinity))))
+            else  txt = paste("Clumping", vcf_clumping)
+        mtext(side = side, txt, line = 2.2)
     }
     if (length(vcf_clumpings)>1 && vcf_clumping == vcf_clumpings[1]) {        
         mtext(side = 3, paste("Canopy overlap", CAI_shade_p), line = 2)
@@ -287,13 +294,24 @@ cols_cai =  make_col_vector(cols_cai, ncols = length(fits))
 cols_clu =  make_col_vector(cols_clu, ncols = length(fits[[1]]))
 
 cols = lapply(cols_cai, function(col1) lapply(cols_clu, function(col2) make_col_vector(c(col1, col2), ncol =3)[2]))
-bestFit_fun <- function(fit, type,...) 
-    bestFit(fit[[type]][,1], fit[[type]][, -1], alpha = 0.75,...)
+bestFit_fun <- function(fit, y0, type, col = "black", addParams = FALSE, ...) {    
+    bestFit(fit[[type]][[1]][,1], fit[[type]][[1]][, -1], alpha = 0.75, col = col, ...)
+    
+    if (addParams) {
+        ys = 90 - y0 - c(0, 5)
+        
+        text(x = rep(c(3, 16.5, 30), each = 2), y = ys,
+             round(fit[[type]][[2]], 4)[c(2, 1), ], adj = c(0,0), col = col, cex = 0.67)
+        text(x = -2, y = ys, c('a', 'b'), col = col, adj = c(0, 0), cex = 0.67)
+    }
+}
 
-plotType <- function(type, name) {
+plotType <- function(type, name, addParams = FALSE) {
     plot.window()
     mtext(name, side = 3, line = -1)
-    mapply(function(i, j) mapply(bestFit_fun, i, j, type = type), fits, cols)
+    y0s = list(list(5, 17), list(31, 44))
+    if (addParams) text(x = c(3, 18, 33), y = 90, c('5%', '50%', '95%'), adj = c(0, 0), cex = 0.67)
+    mapply(function(i, j, k) mapply(bestFit_fun, i, j, k, type = type, addParams = addParams), fits, y0s, cols)
 }
 
 png("figs/Clumping_canopy_overlap_extremes.png", height = 6, width =8, res = 300, units = 'in')
@@ -302,7 +320,7 @@ png("figs/Clumping_canopy_overlap_extremes.png", height = 6, width =8, res = 300
     axis(2)
     plotType(2, "Forest")
     axis(1)
-    plotType(3, "Savanna")
+    plotType(3, "Savanna", addParams = TRUE)
     axis(2)
     axis(1)
 
@@ -310,16 +328,17 @@ png("figs/Clumping_canopy_overlap_extremes.png", height = 6, width =8, res = 300
     mtext("VCF cover (%)", side = 2, line = 1.5, outer = TRUE)
 
     plot(c(0, 1), c(0, 1), type = 'n', axes = FALSE)
+    vcf_clumpings[vcf_clumpings>100] = "~infinity~"
     bestFit(c(0.1, 0.4), cbind(c(0.85, 0.85), c(0.8, 0.8), c(0.9, 0.9)), cols[[1]][[1]])
-    text(adj = 0, x = 0.5, y = 0.85, paste("Clumping:", vcf_clumpings[1], "\nCanopy overlap:", CAI_shade_ps[1]))
+    text.units(adj = 0, x = 0.5, y = 0.85, paste("Clumping:", vcf_clumpings[1], " \nCanopy overlap:", CAI_shade_ps[1]))
 
     bestFit(c(0.1, 0.4), cbind(c(0.65, 0.65), c(0.6, 0.6), c(0.7, 0.7)), cols[[2]][[1]])
-    text(adj = 0, x = 0.5, y = 0.65, paste("Clumping:", vcf_clumpings[1], "\nCanopy overlap:", tail(CAI_shade_ps,1)))
+    text.units(adj = 0, x = 0.5, y = 0.65, paste("Clumping:", vcf_clumpings[1], " \nCanopy overlap:", tail(CAI_shade_ps,1)))
 
 
     bestFit(c(0.1, 0.4), cbind(c(0.45, 0.45), c(0.4, 0.4), c(0.5, 0.5)), cols[[1]][[2]])
-    text(adj = 0, x = 0.5, y = 0.45, paste("Clumping:", tail(vcf_clumpings,1), "\nCanopy overlap:", CAI_shade_ps[1]))
+    text.units(adj = 0, x = 0.5, y = 0.45, paste("Clumping:", tail(vcf_clumpings,1), " \nCanopy overlap:", CAI_shade_ps[1]))
 
     bestFit(c(0.1, 0.4), cbind(c(0.25, 0.25), c(0.2, 0.2), c(0.3, 0.3)), cols[[2]][[2]])
-    text(adj = 0, x = 0.5, y = 0.25, paste("Clumping:", tail(vcf_clumpings,1), "\nCanopy overlap:", tail(CAI_shade_ps,1)))
+    text.units(adj = 0, x = 0.5, y = 0.25, paste("Clumping:", tail(vcf_clumpings,1), " \nCanopy overlap:", tail(CAI_shade_ps,1)))
 dev.off()
