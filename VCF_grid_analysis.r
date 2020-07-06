@@ -111,14 +111,9 @@ gridFile <- function(file) {
             load(temp_file_save)
             return(dat)
         }
-        #print("start")
-        #start_time = Sys.time()
+
         if (!is.null(params)) {
             vals = trans(dat[test_na], params[ens, 3], params[ens, 2]) - dat[test_na]
-            #dat_i = addLayer(dat_i, dat_i, dat_i)
-            #dat_i[[1]][dat_i[[1]] > 0] = 0
-            #dat_i[[2]][dat_i[[2]] < 0] = 0
-            #print(Sys.time() - start_time)
             posnegLU <- function(ty) {            
                 test = lu_v == ty
                 vals = vals[test]
@@ -127,21 +122,16 @@ gridFile <- function(file) {
                 
                 return(c(neg, pos, sum(test)))
             }
-            negPos = sapply(6:10, posnegLU)            
-            
-            #print(Sys.time() - start_time)
+            negPos = sapply(6:10, posnegLU)        
             dat[test_na] = vals
            
         }
-        #print(Sys.time() - start_time)
         dat0 = dat
         dat = raster::extend(dat, ext)  
           
         if (tmask) mask = addLayer(dat, dat)      
         
-        aggPrj <- function(rin) {            
-            #print(Sys.time() - start_time)
-            #r0 = rin
+        aggPrj <- function(rin) {          
             rin = raster::aggregate(rin, fact = 200)
             rin = projectRaster(rin, crs = newproj)
             test = class(try(intersect(rin, rFinal),
@@ -152,7 +142,6 @@ gridFile <- function(file) {
             gc()
             return(rin)          
         }
-        #print(Sys.time() - start_time)
         nl = nlayers(dat)
          
         if (nl>1) {
@@ -167,8 +156,6 @@ gridFile <- function(file) {
             dat = aggPrj(dat)            
         }
 
-        #print(Sys.time() - start_time)
-
         if (!is.null(dat)) {
             if (tmask){               
                 mask[[1]][ test ] = 0
@@ -182,12 +169,10 @@ gridFile <- function(file) {
                 dat = addLayer(dat, mask)
             }     
           
-            #print(Sys.time() - start_time)
             dat = writeRaster(dat, file = temp_file_file,
                         overwrite = TRUE)  
             if (exists("negPos")) dat = list(dat, negPos)
             save(dat, file = temp_file_save)
-            #print(Sys.time() - start_time)  
         }       
         return(dat)
     }
@@ -227,7 +212,7 @@ if (muliCore) {
 }
 
 outs = outs[!sapply(outs, is.null)]
-#browser()
+
 rDiffs = addLayer(rFinal, rFinal, rFinal)
 compare4Mask <- function(mi = 1) {
     mask = sum(layer.apply(outs, function(i) i[[1]][[mi+1]]), na.rm = TRUE)
@@ -255,12 +240,9 @@ compare4Mask <- function(mi = 1) {
                       na.rm = TRUE)
         rDiffs[] = t(qenss)
 
-        lc_assess <- function(out) #{       
+        lc_assess <- function(out)     
             out[[2]][1:2,]
-        #    ltc = ltc0 = out[[2]]            
-            #if (any(ltc[1:2,] > 1)) browser()
-            #ltc = sweep(ltc[1:2,],2, ltc[3,], '*')
-        #}    
+       
         ltcs = lapply(out, lapply, lc_assess)
         ens_change = lapply(1:length(ltcs[[1]]), function(eno)
                             Reduce('+', lapply(ltcs, function(i) i[[eno]])))
