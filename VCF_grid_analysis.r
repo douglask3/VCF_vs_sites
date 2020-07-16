@@ -2,22 +2,24 @@ library(gdalUtils)
 library(raster)
 library(rasterExtras)
 library(snow)
+source("libs/logit_logistic.r")
 
 VCF_dir = 'data/VCF2/'
 files = list.files(VCF_dir, pattern = "MOD44B")
 temp_file = "temp/Tdat"
-params_files = list.files("outputs/", pattern = "Savanna", full.names = TRUE)
+params_files = list.files("outputs/", pattern = "stan-All", full.names = TRUE)
 
 newproj <- "+proj=longlat +datum=WGS84"
 
-temp_file_base = "temp/VCF_masked4-stitching80-2-"
+temp_file_base = "temp/VCF_masked-stan-full-stitching80-"
 
 grab_cache = TRUE
-
 muliCore = F
+ncores = 2
 
-ens_nos = round(seq(1, 5000, length.out = 1001))
-ens_nos = ens_nos[seq(1, length(ens_nos), length.out = 51)]
+#ens_nos = round(seq(1, 5000, length.out = 1001))
+ens_nos = seq(1, 1000, length.out = 51)
+#ens_nos = ens_nos[1:4]
 
 LC_dir = 'data/Cover/'
 LC_files = list.files(LC_dir)
@@ -26,25 +28,42 @@ rFinal =  raster(crs = newproj, res = 0.5)
 rFinal[] = 0
 rFinal = crop(rFinal, c(-180, 180, -30, 30))
 
-trans <- function(VCF, a, b) {
-    tr = (1/VCF) - 1
-    tr = (tr * exp(b))^(1/a)
-    tr = 1/(tr + 1)
-    return(tr)
+LU_keys = 1:10
+
+trans <- function(VCF, params) {
+    VCF0 = VCF
+
+    #VCF = VCF0
+    VCF = params[['VCF0']] + logit(VCF)*params[['VCFD']]
+    #VCF01 = logistic(VCF)
+    VCF = VCF1 = (VCF-params[['alpha']])/params[['beta']]
+    VCF = exp(VCF)
+
+    x = seq(0.00, 1, 0.005)
+    f1 = x^params[['tau1']]
+    x2 = (1-x)^params[['tau2']]
+
+    transBack <- function(y) {
+         if( is.infinite(y)) return(1)
+        x[which.min(abs(y*x2-f1))]
+    }
+    VCF = sapply(VCF, transBack)
+    VCF = logistic((logit(VCF) - params[['VCF0']])/params[['VCFD']])
+    return(VCF)
 }
 
 gridFile <- function(file) {
     
-    temp_file_all = paste0(temp_file_base, '-All-', file,'-',
+    temp_file_all = paste0(temp_file_base, '-Ens50-All-', file,'-',
                            paste0(range(ens_nos), collapse = '_to_'), '--',
                            paste0(unique(diff(ens_nos)), collapse = '_'), ".Rd")
     
     if (file.exists(temp_file_all) && grab_cache) {
         load(temp_file_all)
-        return(out)
+        if (is.null(out) || is.raster(out[[2]][[1]][[1]][[1]][[1]])) return(out)
     }
+    print(file)
     #return(NULL)
-    #print(file) 
     library(gdalUtils)
     library(raster)
 
@@ -77,13 +96,14 @@ gridFile <- function(file) {
     }
     lu = raster(temp_file_lc)
     
-    if (!any(sapply(unique(lu), function(i) any(i == (6:10))))) {
+    if (!any(sapply(unique(lu), function(i) any(i == (LU_keys))))) {
         out = NULL
         save(out, file = temp_file_all)
         return(out)
     }
+    
     lu = raster::resample(lu, dat, method = "ngb")
-    lu_mask = lu >= 6 & lu <= 10
+    lu_mask = lu >= min(LU_keys) & lu <= max(LU_keys)
     
     #u_mask = raster::resample(lu_mask, dat, method = "ngb")  
     
@@ -100,6 +120,13 @@ gridFile <- function(file) {
     ext = extent(dat)
     ext = ext + c(-1, 1, -1, 1) * c(diff(ext[1:2]), diff(ext[3:4])) * 0.25
     dat_all = raster::extend(dat_all, ext)
+
+    LUMasks = lapply(LU_keys,  function(ty) lu_v == ty)
+    
+    vals = dat[test_na]
+    vals[vals >1] = 1
+    vals[vals <0] = 0
+    vals0 = vals
     gridAndMask <- function(dat, tmask = FALSE, params = NULL,
                             pfile = NaN, ens = 0) {
         temp_file_file = paste0(temp_file_base,
@@ -108,24 +135,29 @@ gridFile <- function(file) {
                                 file,'-', pfile, '-', ens, "Rd")
         
         if (file.exists(temp_file_save) && grab_cache) {
-            load(temp_file_save)
-            return(dat)
+            load(temp_file_save)            
+            if (is.raster(dat[[1]]) || is.raster(dat[[1]][[1]]))return(dat)
         }
-
+        
         if (!is.null(params)) {
-            vals = trans(dat[test_na], params[ens, 3], params[ens, 2]) - dat[test_na]
-            posnegLU <- function(ty) {            
-                test = lu_v == ty
-                vals = vals[test]
-                neg = sum(vals[vals<0], na.rm = TRUE)
-                pos = sum(vals[vals>0], na.rm = TRUE)
+            
+            vals  = trans(vals0, params[ens,]) 
+            valsi = vals - vals0
+            posnegLU <- function(ty) {
+                valsi = valsi[ty]
+                neg = sum(valsi[valsi<0], na.rm = TRUE)
+                pos = sum(valsi[valsi>0], na.rm = TRUE)
                 
-                return(c(neg, pos, sum(test)))
+                return(c(neg, pos, sum(ty)))
             }
-            negPos = sapply(6:10, posnegLU)        
-            dat[test_na] = vals
-           
+            negPos = sapply(LUMasks, posnegLU)        
+            dat[test_na] = valsi
         }
+        histLU <- function(ty) 
+            hist(vals[ty], plot = FALSE, breaks = seq(0, 1, 0.01))[c("counts","mids")]
+        
+        hists = lapply(LUMasks, histLU)
+        
         dat0 = dat
         dat = raster::extend(dat, ext)  
           
@@ -137,7 +169,10 @@ gridFile <- function(file) {
             test = class(try(intersect(rin, rFinal),
                              silent = TRUE))
             
-            if (test == "try-error") return(NULL)
+            if (test == "try-error") {
+                print(paste(c("no overlap. Extent:" , extent(rin)[1:4]), collapse = ' '))
+                return(NULL)
+            }
             rin =  raster::resample(rin, rFinal) 
             gc()
             return(rin)          
@@ -155,7 +190,7 @@ gridFile <- function(file) {
             dat[test] = 0            
             dat = aggPrj(dat)            
         }
-
+         
         if (!is.null(dat)) {
             if (tmask){               
                 mask[[1]][ test ] = 0
@@ -172,8 +207,11 @@ gridFile <- function(file) {
             dat = writeRaster(dat, file = temp_file_file,
                         overwrite = TRUE)  
             if (exists("negPos")) dat = list(dat, negPos)
+            dat = list(dat, hists)
+            
             save(dat, file = temp_file_save)
-        }       
+        }  
+        
         return(dat)
     }
     control = gridAndMask(dat, TRUE)   
@@ -182,16 +220,21 @@ gridFile <- function(file) {
         save(out, file = temp_file_all)
         return(out)
     }
+   
     forParams <- function(pfile) {
+        print(pfile)
         params = read.csv(pfile)
+        
         name = strsplit(pfile, '-#')[[1]][2]
         name = strsplit(name, '.csv.')[[1]][1]
         out = lapply(ens_nos, function(i)
                         gridAndMask(dat, tmask = FALSE, params,
                                     pfile = name, ens = i))
+        
     }
     out = lapply(params_files, forParams)
-    out = c(control, out)
+    
+    out = list(control, out)
     save(out, file = temp_file_all)
     return(out)
 }
@@ -199,41 +242,49 @@ gridFile <- function(file) {
 if (muliCore) {
     print("yay")
 
-    cl = makeSOCKcluster(rep("localhost", 3))
+    cl = makeSOCKcluster(rep("localhost", ncores))
         clusterExport(cl = cl, list("ens_nos", "grab_cache",
                                     "temp_file","VCF_dir", "LC_files", "LC_dir",
-                                    "params_files", "newproj","temp_file_base",
-                                    "layer.apply", "trans", "rFinal"))
+                                    "params_files", "newproj","temp_file_base","LU_keys",
+                                    "layer.apply", "trans", "rFinal", "logit", "logistic"))
         
-        outs = parLapply(cl, files[1:100], gridFile)
+        outs = parLapply(cl, files[91:150], gridFile)
     stopCluster(cl)
 } else {
-    outs = lapply(files[101:200], gridFile)
+    outs = lapply(files[181:210], gridFile)
 }
-
+browser()
 outs = outs[!sapply(outs, is.null)]
 
 rDiffs = addLayer(rFinal, rFinal, rFinal)
 compare4Mask <- function(mi = 1) {
-    mask = sum(layer.apply(outs, function(i) i[[1]][[mi+1]]), na.rm = TRUE)
-    control = sum(layer.apply(outs, function(i) i[[1]][[1]]), na.rm = TRUE) / mask
     
+    mask = sum(layer.apply(outs, function(i) i[[1]][[1]][[mi+1]]), na.rm = TRUE)
+    control = sum(layer.apply(outs, function(i) i[[1]][[1]][[1]]), na.rm = TRUE) / mask   
     
+    cnt = lapply(outs, function(i) i[[1]][[2]])
+    cnt = lapply(1:length(cnt[[1]]), function(id)
+                    Reduce('+', lapply(cnt, function(h) h[[id]][[1]])))
     experiment <- function(id) {
         library(raster)
         library(rasterExtras)
-        out = lapply(outs, function(i) i[[id+1]])
-     
-        ensMember <- function(i, index = 1) {
-            temp_file_ens = paste0(temp_file_base,"-6mask_", mi, 
+        hists = lapply(outs, function(i) list(i[[2]][[2]][[id]][[2]])[[1]])
+        hists = lapply(1:length(hists[[1]]), function(ty)
+                        Reduce('+', lapply(hists, function(i) i[[ty]][[1]]) ))
+        out = lapply(outs, function(i) i[[2]][[id]])
+        
+        ensMember <- function(i) {
+            temp_file_ens = paste0(temp_file_base,"-3mask_", mi, 
                                    '-', id, "-", i, ".nc")            
-            print(temp_file_ens)
+            print(temp_file_ens)            
+            if (file.exists(temp_file_ens)) return(brick(temp_file_ens))                     
             
-            if (file.exists(temp_file_ens)) return(brick(temp_file_ens))            
-            ensR = sum(layer.apply(out, function(ri) ri[[i]][[index]]), na.rm = TRUE) / mask            
+            ensR = sum(layer.apply(out, function(ri) ri[[i]][[1]][[1]]),
+                        na.rm = TRUE) / mask            
             ensR = writeRaster(ensR, file = temp_file_ens, overwrite = TRUE)            
             return(ensR)
-        }            
+        }  
+                
         enss = layer.apply(1:length(out[[1]]), ensMember)
         
         qenss = apply(enss[], 1, quantile, c(0.05, 0.5, 0.95),
@@ -241,22 +292,22 @@ compare4Mask <- function(mi = 1) {
         rDiffs[] = t(qenss)
 
         lc_assess <- function(out)     
-            out[[2]][1:2,]
-       
+            out[[1]][[2]][1:2,]       
+        
         ltcs = lapply(out, lapply, lc_assess)
+        
         ens_change = lapply(1:length(ltcs[[1]]), function(eno)
                             Reduce('+', lapply(ltcs, function(i) i[[eno]])))
-        if (mi == 1) {
-            area = lapply(out, function(i) i[[2]][[2]][3,])
-            area = Reduce('+', area)
-        }
-        ens_change = array(unlist(ens_change), dim = c(2,5, 6))
+        if (mi == 1) {             
+            area = lapply(out, function(i) i[[1]][[1]][[2]][3,])
+            area = unlist(Reduce('+', area))
+        } else area = 0
+        ens_change = array(unlist(ens_change), dim = c(2,10, 6))
         qchange = apply(ens_change, 1,
                         function(i) list(apply(i, 1, quantile, 
-                        c(0.05, 0.5, 0.95))))
-
+                        c(0.05, 0.5, 0.95)))) 
         
-        return(c(rDiffs, qchange,area))
+        return(c(rDiffs, qchange,c(area), c(cnt), c(hists)))
     }
     
     if (F) {
@@ -267,9 +318,10 @@ compare4Mask <- function(mi = 1) {
         stopCluster(cl)
     } else {
         exps = lapply(1:4, experiment)
-    }    
+    }   
+     
     save(control, exps, mask,
-         file = paste0("outputs/gridded_VCF_correction-6mask", mi, ".Rd"))
+         file = paste0("outputs/gridded_VCF_correction-stan-test2-mask", mi, ".Rd"))
 }
 
 compare4Mask(2)
