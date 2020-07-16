@@ -20,7 +20,7 @@ forMask <- function(id) {
     conHist = exps[[1]][-(1:13)][1:10]
     expHist = lapply(exps, function(i) i[-(1:13)][11:20])
     expHist = lapply(1:length(expHist[[1]]), function(i) lapply(expHist, function(j) j[[i]]))
-    browser()
+     
     lty_area = unlist(exps[[1]][4:13])
     plotLUtype <- function(con, exp, name) {
         plot(c(0, 100), c(0, 1), yaxt = 'n', xlab = '', cex = 1000,
@@ -77,7 +77,7 @@ forMask <- function(id) {
                 x = r[[i + 1]][[1]]
                 
                 if (id == 2) x = x*250*250/(1000*1000*1000000)
-                else x = sweep(x, 2, unlist(r[4:8]), '/')
+                else x = sweep(x, 2, unlist(r[4:13]), '/')
                 colnames(x) = vegTypeNames
                 rownames(x) = paste0(name, '-',rownames(x))
                 
