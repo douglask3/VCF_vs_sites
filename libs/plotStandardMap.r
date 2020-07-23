@@ -36,10 +36,13 @@ plotStandardMap <- function(r, cols, limits, e = NULL, add_legend = FALSE,
     if (nlayers(r) > 1 && is.null(e)) {
         if (nlayers(r) == 3) {
             if (any(r[] <0, na.rm = TRUE) && any(r[] > 0, na.rm = TRUE)) {
-                e = r[[2]]
+                
+                e = 1-((sum(r<0) == 3) + (sum(r>0) == 3))
+                
+                #e = r[[2]]
                 #e[!is.na(r[[2]])] = 0
-                e = abs(r[[3]] - r[[1]])/max(abs(r[[c(1,3)]]))/2
-                e[r[[3]]>0 & r[[1]] <0] = 1                
+                #e = abs(r[[3]] - r[[1]])/max(abs(r[[c(1,3)]]))/2
+                #e[r[[3]]>0 & r[[1]] <0] = 1                
             } else  e = 1-r[[1]]/r[[3]]
             
             r = r[[2]]
