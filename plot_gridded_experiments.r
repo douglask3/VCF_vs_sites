@@ -9,7 +9,7 @@ cols = c('#ffffe5','#f7fcb9','#d9f0a3','#addd8e','#78c679','#41ab5d','#238443','
 limits = c(0, 1, 2, 5, 10, 20, 50)
 
 dcols = c('#40004b','#762a83','#9970ab','#c2a5cf','#f7f7f7','#a6dba0','#5aae61','#1b7837','#00441b')
-dlimits = c(-20, -15, -10, -5, -2, -1, 1, 2, 5, 10, 15, 20)
+dlimits = c(-20, -16, -12, -8, -4, -2, -1, 1, 2, 4, 8, 12, 16, 20)
 vegTypeNames = c("EG NL Forest", "EG BL Forest", "Dec NL Forest",
                     "Dec BL Forest", "Mixed Forest",
                     "Close Shrub", "Open Shrub", "Woody Savanna", "Savannas", "Grassland")
@@ -42,7 +42,7 @@ forMask <- function(id) {
     if (id == 1) {
         png("figs/vegTypesX.png", width = 7.2, height = 7.2*5/3, res = 300, units = 'in')
             par(mfrow = c(5, 2), mar = rep(0.5, 4), oma = c(3,3,0, 0))
-        
+             
             mapply(plotLUtype, conHist, expHist,
                   vegTypeNames)
         
@@ -51,8 +51,7 @@ forMask <- function(id) {
     out = pout = nout = c()
     mask = !is.na(do.call('sum', c(control, lapply(exps, function(i) i[[1]]))))
     output.csv <- function(r, name) {
-        ri = r[[1]]
-       
+        ri = r[[1]]       
         
         if (is.null(out)) {
             out = cbind(xyFromCell(ri, 1:length(ri)), ri[])
@@ -117,16 +116,30 @@ forMask <- function(id) {
 
     png(paste0("figs/VCF_maps-mask",id,".png"),
         height = 3.7, width = 7.2, units = 'in', res = 300)
-        layout(rbind(c(1, 0), c(2, 0), c(3, 4), c(5, 6), 7), heights = c(1, 0.45, 1, 1, 0.45))
+        layout(rbind(c(1, 2), c(3, 4), c(5, 6), c(7, 8), 9), heights = c(1, 0.45, 1, 1, 0.45))
         par(mar = c(0, 0, 1.1, 0))
         
         plotMap(100*control, cols = cols, limits = limits, title3 = 'VCF')
-        par(mar = c(0, 0, 0.33, 0))
-            StandardLegend(cols, limits, 100*control, extend_max = FALSE, maxLab = 100, units = '%')
-        par(mar = c(0, 0, 1.1, 0)) 
+
         exps = lapply(exps, function(i) 100*i[[1]])# (i - control) *100)
+        sig = layer.apply(exps, function(i)
+                    (sum(i[[c(1,3)]] < 0)==2) + (sum(i[[c(1, 3)]]>0) == 2))
+        
+        sig_cols = c('#ffffd9','#edf8b1','#c7e9b4','#7fcdbb',
+                               '#41b6c4','#1d91c0','#225ea8','#253494','#081d58')
+        plotMap(sum(sig), cols = sig_cols, 
+                limits = 0.5:3.5, title3 = 'VCF')
+        par(mar = c(0, 0, 0.33, 0))        
+        StandardLegend(cols, limits, 100*control, extend_max = FALSE, maxLab = 100, units = '%')
+        
+        StandardLegend(sig_cols, 0:3, sig, labelss = c(0, paste(1:4, '                       ')),
+                        extend_max = FALSE)
+        par(mar = c(0, 0, 1.1, 0)) 
+        
         ehist = mapply(plotMap, exps, title3 = titles, txt.col = txt.cols,
             MoreArgs = list(cols = dcols, limits = dlimits))
+        
+       
         control = control*100       
         ehist = lapply(ehist, function(i) i + control)
         par(mar = c(0, 0, 0.33, 0))
