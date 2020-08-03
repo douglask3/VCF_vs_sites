@@ -248,12 +248,12 @@ if (muliCore) {
                                     "params_files", "newproj","temp_file_base","LU_keys",
                                     "layer.apply", "trans", "rFinal", "logit", "logistic"))
         
-        outs = parLapply(cl, files[91:150], gridFile)
+        outs = parLapply(cl, rev(files), gridFile)
     stopCluster(cl)
 } else {
-    outs = lapply(files[181:210], gridFile)
+    outs = lapply(rev(files), gridFile)
 }
-browser()
+
 outs = outs[!sapply(outs, is.null)]
 
 rDiffs = addLayer(rFinal, rFinal, rFinal)
@@ -274,7 +274,7 @@ compare4Mask <- function(mi = 1) {
         out = lapply(outs, function(i) i[[2]][[id]])
         
         ensMember <- function(i) {
-            temp_file_ens = paste0(temp_file_base,"-3mask_", mi, 
+            temp_file_ens = paste0(temp_file_base,"-4mask_", mi, 
                                    '-', id, "-", i, ".nc")            
             print(temp_file_ens)            
             if (file.exists(temp_file_ens)) return(brick(temp_file_ens))                     
@@ -310,7 +310,7 @@ compare4Mask <- function(mi = 1) {
         return(c(rDiffs, qchange,c(area), c(cnt), c(hists)))
     }
     
-    if (F) {
+    if (T) {
         cl = makeSOCKcluster(rep("localhost", 3))
             clusterExport(cl = cl, list("outs", "rDiffs", "temp_file_base"))
         
