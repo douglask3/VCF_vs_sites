@@ -36,14 +36,20 @@ forMask <- function(id) {
                    col = make.transparent(col, 0.67))
         }
         addPoly(con)
-        mapply(addPoly, exp, c("red", "green", "blue", "pink"))
+        #mapply(addPoly, exp, c("red", "green", "blue", "pink"))
         #browser()
     }
-    if (id == 1) {
-        png("figs/vegTypesX.png", width = 7.2, height = 7.2*5/3, res = 300, units = 'in')
+    if (id == 1 && F) {
+        png("figs/vegTypes-comb.png", width = 7.2, height = 7.2*5/3, res = 300, units = 'in')
             par(mfrow = c(5, 2), mar = rep(0.5, 4), oma = c(3,3,0, 0))
-             
-            mapply(plotLUtype, conHist, expHist,
+            browser()
+            vegCom = list(1:5, 6, 7, 8, 9, 10)
+            vegTypeNames = c('Forest', vegTypeNames[6:10])
+            combine <- function(vt, Hist) Reduce('+', Hist[vt])
+            conHisti = lapply(vegCom, combine, conHist)
+            #expHisti = lapply(vegCom, combine, expHist)
+            
+            mapply(plotLUtype, conHisti, expHist[1:5],
                   vegTypeNames)
         
         dev.off()
