@@ -9,7 +9,7 @@ cols = c('#ffffe5','#f7fcb9','#d9f0a3','#addd8e','#78c679','#41ab5d','#238443','
 limits = c(0, 1, 2, 5, 10, 20, 50)
 
 dcols = c('#40004b','#762a83','#9970ab','#c2a5cf','#f7f7f7','#a6dba0','#5aae61','#1b7837','#00441b')
-dlimits = c(-20, -16, -12, -8, -4, -2, -1, 1, 2, 4, 8, 12, 16, 20)
+dlimits = c(-12, -10, -8, -6, -4, -2, -1,0, 1, 2, 4, 6, 8, 10, 12)
 vegTypeNames = c("EG NL Forest", "EG BL Forest", "Dec NL Forest",
                     "Dec BL Forest", "Mixed Forest",
                     "Close Shrub", "Open Shrub", "Woody Savanna", "Savannas", "Grassland")
@@ -36,21 +36,23 @@ forMask <- function(id) {
                    col = make.transparent(col, 0.67))
         }
         addPoly(con)
+        write.csv(file = paste0('outputs/histLC-', name, '.csv'), cbind(x, con))
+        
         #mapply(addPoly, exp, c("red", "green", "blue", "pink"))
         #browser()
     }
-    if (id == 1 && F) {
+    if (id == 1 && T) {
         png("figs/vegTypes-comb.png", width = 7.2, height = 7.2*5/3, res = 300, units = 'in')
             par(mfrow = c(5, 2), mar = rep(0.5, 4), oma = c(3,3,0, 0))
-            browser()
+            
             vegCom = list(1:5, 6, 7, 8, 9, 10)
-            vegTypeNames = c('Forest', vegTypeNames[6:10])
+            vegTypeNamesi = c('Forest', vegTypeNames[6:10])
             combine <- function(vt, Hist) Reduce('+', Hist[vt])
             conHisti = lapply(vegCom, combine, conHist)
             #expHisti = lapply(vegCom, combine, expHist)
             
-            mapply(plotLUtype, conHisti, expHist[1:5],
-                  vegTypeNames)
+            mapply(plotLUtype, conHisti, NaN,
+                  vegTypeNamesi)
         
         dev.off()
     }
@@ -94,7 +96,7 @@ forMask <- function(id) {
         }
     
     }
-    titles = c('clumping0_overlap0', 'clumpingMax_overlap0',
+    titles = c('clumping0_overlap0','clumpingMax_overlap0', 
                'clumping0_overlapMax', 'clumpingMax_overlapMax')
 
     output.csv(control, 'control')
@@ -102,11 +104,11 @@ forMask <- function(id) {
     
     write.csv(out, file = paste0('outputs/output4histogram-mask_', id, '-git_rev_', gitVersionNumber(), '.csv'), row.names = FALSE)
     
-    write.csv(rbind(nout, lty_area), file = paste0('outputs/output_negetativeChange-mask_', id, '-git_rev_', gitVersionNumber(), '.csv'), row.names = TRUE)
-    write.csv(rbind(pout, lty_area), file = paste0('outputs/output_positiveChange-mask_'  , id, '-git_rev_', gitVersionNumber(), '.csv'), row.names = TRUE)
+    write.csv(rbind(nout, lty_area), file = paste0('outputs/output_negetativeChange-mask_cord_', id, '-git_rev_', gitVersionNumber(), '.csv'), row.names = TRUE)
+    write.csv(rbind(pout, lty_area), file = paste0('outputs/output_positiveChange-mask_cord_'  , id, '-git_rev_', gitVersionNumber(), '.csv'), row.names = TRUE)
     
     files = list.files("outputs/", pattern = "stan")
-    titles = c('no clumping/overlap', 'Max. clumping', 'Max. overlap', 'Max. clumping/overlap')
+    titles = c('Unenforced clumping/overlap', 'Enforced clumping', 'Enforced overlap', 'Enforced clumping/overlap')
     txt.cols = sapply(files[grepl('All', files)],
                       function(i) strsplit(strsplit(i, 'All-')[[1]][2], '.csv')[[1]])
     
@@ -128,23 +130,35 @@ forMask <- function(id) {
         plotMap(100*control, cols = cols, limits = limits, title3 = 'VCF')
 
         exps = lapply(exps, function(i) 100*i[[1]])# (i - control) *100)
-        sig = layer.apply(exps, function(i)
-                    (sum(i[[c(1,3)]] < 0)==2) + (sum(i[[c(1, 3)]]>0) == 2))
         
+        sig = sum(layer.apply(exps, function(i)
+                    (sum(i > 0)==3)))# + (sum(i[[c(1, 3)]]<0) == 2))
+        sig2 =  sum(layer.apply(exps, function(i)
+                    (sum(i < 0)==3)))
+        test = sig2 > sig
+        
+        
+        sig[test] = sig2[test] * (-1)
         sig_cols = c('#ffffd9','#edf8b1','#c7e9b4','#7fcdbb',
                                '#41b6c4','#1d91c0','#225ea8','#253494','#081d58')
+
+        sig_cols = c('#8c510a','#bf812d','#dfc27d','#f6e8c3','#f5f5f5',
+                    '#c7eae5','#80cdc1','#35978f','#01665e')
         plotMap(sum(sig), cols = sig_cols, 
-                limits = 0.5:3.5, title3 = 'VCF')
+                limits = -3.5:3.5, title3 = 'No. significant')
         par(mar = c(0, 0, 0.33, 0))        
         StandardLegend(cols, limits, 100*control, extend_max = FALSE, maxLab = 100, units = '%')
         
-        StandardLegend(sig_cols, 0:3, sig, labelss = c(0, paste(1:4, '                       ')),
-                        extend_max = FALSE)
+        StandardLegend(sig_cols, -3.5:3.5, sig,
+                       labelss = c('', paste(c(4:0, 1:4), '            ')),
+                        extend_max = FALSE, ylabposScling = -0.67)
+        mtext(side = 3, line = -0.67, adj = 0.1, 'Significant decrease', cex = 0.67)
+        mtext(side = 3, line = -0.67, adj = 0.9, 'Significant increase', cex = 0.67)
+        
         par(mar = c(0, 0, 1.1, 0)) 
         
         ehist = mapply(plotMap, exps, title3 = titles, txt.col = txt.cols,
-            MoreArgs = list(cols = dcols, limits = dlimits))
-        
+            MoreArgs = list(cols = dcols, limits = dlimits))        
        
         control = control*100       
         ehist = lapply(ehist, function(i) i + control)
