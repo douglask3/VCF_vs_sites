@@ -128,9 +128,31 @@ forMask <- function(id) {
         par(mar = c(0, 0, 1.1, 0))
         
         plotMap(100*control, cols = cols, limits = limits, title3 = 'VCF')
-
+    
         exps = lapply(exps, function(i) 100*i[[1]])# (i - control) *100)
+
+        area_tree <- function(r, byArea = FALSE) {
+            ar =  area(control, na.rm = TRUE)
+            r =  sum((r * ar)[], na.rm = TRUE)
+            if (byArea) r = r / sum(ar[], na.rm = TRUE)
+            return(r)
+        }
+        control_area = area_tree(control) #sum((control * )[], na.rm = TRUE)
+        exp_area = sapply(exps, function(i) unlist(layer.apply(i, area_tree)))
+        control_area_pc = area_tree(control, T)
+        exp_area_pc = sapply(exps, function(i) unlist(layer.apply(i, area_tree, T)))
+
+        cat("\nfor mask:", id)
+        cat("\nArea of control:", control_area) 
+        cat("\n\texp:\n")
+        print(exp_area)
+        cat("\nPC of control:", round(100*control_area_pc))
+        cat("\n\texp\n")
+        print(round(exp_area_pc))
         
+        cat("\n\texp pc control\n")
+        print(100-round(100*100*control_area_pc / (exp_area_pc+100*control_area_pc)))
+        #browser() 
         sig = sum(layer.apply(exps, function(i)
                     (sum(i > 0)==3)))# + (sum(i[[c(1, 3)]]<0) == 2))
         sig2 =  sum(layer.apply(exps, function(i)
