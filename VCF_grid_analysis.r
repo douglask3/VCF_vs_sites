@@ -32,7 +32,7 @@ LU_keys = 1:10
 
 trans <- function(VCF, params) {
     VCF0 = VCF
-
+    browser()
     #VCF = VCF0
     VCF = params[['VCF0']] + logit(VCF)*params[['VCFD']]
     #VCF01 = logistic(VCF)
@@ -232,8 +232,9 @@ gridFile <- function(file) {
                                     pfile = name, ens = i))
         
     }
-    out = lapply(params_files, forParams)
     
+    
+    out = lapply(params_files, forParams)
     out = list(control, out)
     save(out, file = temp_file_all)
     return(out)
@@ -268,26 +269,28 @@ compare4Mask <- function(mi = 1) {
     experiment <- function(id) {
         library(raster)
         library(rasterExtras)
+         
         hists = lapply(outs, function(i) list(i[[2]][[2]][[id]][[2]])[[1]])
         hists = lapply(1:length(hists[[1]]), function(ty)
                         Reduce('+', lapply(hists, function(i) i[[ty]][[1]]) ))
         out = lapply(outs, function(i) i[[2]][[id]])
         
         ensMember <- function(i) {
-            temp_file_ens = paste0(temp_file_base,"-4mask_", mi, 
+            temp_file_ens = paste0(temp_file_base,"-6mask_", mi, 
                                    '-', id, "-", i, ".nc")            
             print(temp_file_ens)            
             if (file.exists(temp_file_ens)) return(brick(temp_file_ens))                     
             
             ensR = sum(layer.apply(out, function(ri) ri[[i]][[1]][[1]]),
-                        na.rm = TRUE) / mask            
+                        na.rm = TRUE) / mask      
+            
             ensR = writeRaster(ensR, file = temp_file_ens, overwrite = TRUE)            
             return(ensR)
         }  
-                
+        
         enss = layer.apply(1:length(out[[1]]), ensMember)
         
-        qenss = apply(enss[], 1, quantile, c(0.05, 0.5, 0.95),
+        qenss = apply(enss[], 1, quantile, c(0.1, 0.5, 0.9),
                       na.rm = TRUE)
         rDiffs[] = t(qenss)
 
@@ -305,15 +308,15 @@ compare4Mask <- function(mi = 1) {
         ens_change = array(unlist(ens_change), dim = c(2,10, 6))
         qchange = apply(ens_change, 1,
                         function(i) list(apply(i, 1, quantile, 
-                        c(0.05, 0.5, 0.95)))) 
+                        c(0.1, 0.5, 0.9)))) 
         
         return(c(rDiffs, qchange,c(area), c(cnt), c(hists)))
     }
     
     if (T) {
-        cl = makeSOCKcluster(rep("localhost", 3))
+        cl = makeSOCKcluster(rep("localhost", 4))
             clusterExport(cl = cl, list("outs", "rDiffs", "temp_file_base"))
-        
+            
             exps = parLapply(cl, 1:4, experiment)
         stopCluster(cl)
     } else {
