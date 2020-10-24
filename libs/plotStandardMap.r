@@ -14,7 +14,7 @@ library(rgdal)
 #SA_ste <- readOGR(dsn = "data/South_America", layer = "South_America")
 rivers <- readOGR(dsn = "data/majorrivers_0_0", layer = "MajorRivers")
 
-StandardLegend <- function(cols, limits, dat, rightx = 0.95, extend_max = TRUE, oneSideLabels = NA, add = FALSE, ...) {
+StandardLegend <- function(cols, limits, dat, rightx = 0.95, extend_max = TRUE, oneSideLabels = NA, add = FALSE, ylabposScling = 1,...) {
     if (add)        
         plot_loc = c(0.41, rightx, 0.1, 0.13)
     else 
@@ -22,7 +22,7 @@ StandardLegend <- function(cols, limits, dat, rightx = 0.95, extend_max = TRUE, 
     add_raster_legend2(cols, limits, dat = dat, add = add,
                        transpose = FALSE, srt = 0, oneSideLabels= oneSideLabels,
                        plot_loc = plot_loc,
-                       ylabposScling = 1, extend_max = extend_max, ...)
+                       ylabposScling = ylabposScling, extend_max = extend_max, ...)
 }
 
 lineBox <- function(x, y, ...) 
@@ -59,7 +59,7 @@ plotStandardMap <- function(r, cols, limits, e = NULL, add_legend = FALSE,
     grid()
     plot_raster_from_raster(r, e = e,interior = FALSE,#coast.lwd = NULL,
                             cols = cols, limits = limits, add_legend = FALSE,
-                            quick = TRUE, ePatternRes = 60, ePatternThick = 0.87,
+                            quick = TRUE, ePatternRes = 40, ePatternThick = 0.5,
                             limits_error = limits_error, add = TRUE, ...)
     
     #plot(rivers, col = c(rep("#FFFFFF00", 9), "black", rep("#FFFFFF00", 88)), add = TRUE, lwd = 2.5)
