@@ -4,6 +4,7 @@
 library(reldist)
 library(rstanarm)
 library(fields)
+library(rstan)
 source("libs/is_p_star.r")
 source("libs/make.transparent.r")
 source("libs/make_col_vector.r")
@@ -74,15 +75,42 @@ plot.window <- function() {
 #    lines(c(0, 100), c(0, 80), lty = 2, lwd = 2)
 }
 
-bestFit <- function(x, y, col, alpha = 0.95, lty = 1, summary = FALSE, ...) {
-    if (lty == 1) lines(x, y[,2], col = col, lwd = 2)
-    lines(x, y[,1], col = make.transparent(col, alpha/2), lty = lty, lwd = 1)
-    lines(x, y[,3], col = make.transparent(col, alpha/2), lty = lty, lwd = 1)
-    polygon(c(x, rev(x)), c(y[,1],rev(y[,3])), col = make.transparent(col, alpha), border = NA)
+bestFit <- function(x, y, col, alpha = 0.95, lty = 1, summary = FALSE, ..., switchXY = FALSE, logistize = TRUE) {
+    if (switchXY) {
+        if (lty == 1) lines(y[,2], x, col = col, lwd = 2)
+        lines(y[,1], x, col = make.transparent(col, alpha/2), lty = lty, lwd = 1)
+        lines(y[,3], x, col = make.transparent(col, alpha/2), lty = lty, lwd = 1)
+        polygon(c(y[,1],rev(y[,3])), c(x, rev(x)), col = make.transparent(col, alpha), border = NA)
+    } else {
+        if (lty == 1) lines(x,y[,2], col = col, lwd = 2)
+        lines(x, y[,1], col = make.transparent(col, alpha/2), lty = lty, lwd = 1)
+        lines(x, y[,3], col = make.transparent(col, alpha/2), lty = lty, lwd = 1)
+        polygon(c(x, rev(x)), c(y[,1],rev(y[,3])), col = make.transparent(col, alpha), border = NA)
+    }
     if (summary) {
         x = logit(x/100)
         y = logit(y/100)
     }
+    
+    findCross <- function(i) {
+        diff = (i - x)
+        
+        crss = x[which((diff[-1] < 0) + (head(diff, -1) > 0)!=1)+1]
+        
+        if (logistize) crss = logistic(crss) * 100
+        if (length(crss) == 0) crss = c(NaN, NaN, NaN)
+        if (length(crss) == 1) crss = c(crss, NaN, NaN)
+        if (length(crss) == 2) crss = c(crss, NaN)
+        if (length(crss) != 3) {
+            print("oh no!")
+            browser()
+        }
+        return(crss)
+    }
+    
+    out = apply(y, 2, findCross)
+    
+    return(out)
 }
 
 test_clumping <- function(vcf_clumping, CAI_shade_p = 0, cont = NULL) {
@@ -255,14 +283,15 @@ test_clumping <- function(vcf_clumping, CAI_shade_p = 0, cont = NULL) {
         }
         
         ## get the best fit and confidence out, and transform it back for plotting        
-        params = data.frame(extract(fit))#data.frame(fit)
+        params = data.frame( rstan::extract(fit))#data.frame(fit)
+        
         params = params[round(seq(1, nrow(params), length.out = 1000)),]
         #params = params[(nrow(params)-999):nrow(params),]
         cname = c(colnames(params), c('VCF0', 'VCFD', 'VCFE'))
         params = cbind(params, t(VCFcs))
         colnames(params) = cname
         
-        addPred <- function(x, ...) {
+        addPred <- function(x, ..., plot = TRUE) {
             #x = logit(seq(0.005, 1-0.005, length.out = 100))
             
             #y = predict(fit, newdata = data.frame(xf = x),
@@ -270,7 +299,35 @@ test_clumping <- function(vcf_clumping, CAI_shade_p = 0, cont = NULL) {
             
             conf = apply(params, 1, function(i)
                     i['alpha'] + i['beta']*log(x^i['tau1']/((1-x)^i['tau2'])))
-            conf = t(apply(conf, 1, quantile, c(0.1, 0.5, 0.9)))            
+            
+            
+            corSlim <- function(i, x) 
+                i['alpha'] + i['beta']*log(x^i['tau1']/((1-x)^i['tau2']))
+            
+            
+            corFull <- function(i) {
+                out = i['VCF0'] + logit(x) * i['VCFD']
+                out = (out - i['alpha'])/i['beta']
+                out = out1 = exp(out)
+                test = is.infinite(out)
+                xt = seq(0.00, 1, 0.005)
+                x1 = xt^i['tau1']
+                x2 = (1-xt)^i['tau2']
+                out = sapply(out, function(i) xt[which.min(abs(i * x2 - x1))])
+             
+                
+                out[test] = 1 
+                out = logistic((logit(out) - i['VCF0'])/i['VCFD'])
+                
+                return(out)
+            }
+                #out = (corSlim(i)-i['VCF0'])/i['VCFD']
+                
+            conf = apply(params, 1, corSlim, x)
+            conff = apply(params, 1, corFull)  
+            
+            conf  = t(apply(conf , 1, quantile, c(0.1, 0.5, 0.9)))            
+            conff = t(apply(conff, 1, quantile, c(0.1, 0.5, 0.9)))            
             
             pred = c()
             for (i in 1:100) 
@@ -281,18 +338,31 @@ test_clumping <- function(vcf_clumping, CAI_shade_p = 0, cont = NULL) {
             
             x = x*100
             #x    = logistic(x   )*100
-            conf = logistic(conf)*100
-            pred = logistic(pred)*100
-        
+            conf  = logistic(conf )*100
+            conff = conff*100
+            pred  = logistic(pred )*100
+            
+            #for (i in 1:ncol(conff))
+            #    conff[,i] = 100*(conff[,i] - params[i, 'VCF0'])/params[i, 'VCFD']
+            
+            #corFull <- function(i) 
+            #    out = (corSlim(i)-i['VCF0'])/i['VCFD']
+            
             ## add best fit               
-            bestFit(x, conf, col, ...) 
-            bestFit(x, pred, col, lty = 2, ...)
-            return(list(x, conf, pred))
+            if (plot) {
+                out = bestFit(x, conf, col, ..., logistize = FALSE) 
+                #bestFit(x, pred, col, lty = 2, ...)
+                fname = paste("outputs/LineCross", "clunping", vcf_clumping, "overlap", CAI_shade_p,
+                              "cont", cont, "type", type, "l", l, '.csv', sep = '-')
+                write.csv(out, file = fname)
+                 
+            }
+            return(list(x, conff, pred))
         }
-        xi = seq(0.5, 99.5, length.out = 100)/100
-        addPred(xi, alpha = 0.99)
         xi = seq(min(x), max(x), length.out = 100)/100
-        out = addPred(xi, alpha = 0.87)
+        addPred(xi, alpha = 0.87)
+        xi = seq(0.5, 99.5, length.out = 100)/100
+        out = addPred(xi, alpha = 0.99, plot = FALSE)
         x = out[[1]]; conf = out[[2]]; pred = out[[3]]
         #text(x = 10, y = 100 - l,  paste("R2:", round(cor(predict(fit), yf)^2, 3)), col = col)
         
@@ -308,26 +378,29 @@ test_clumping <- function(vcf_clumping, CAI_shade_p = 0, cont = NULL) {
     }
 
     ## run for all and "forest", "savanna"
-    fitAll = add_trend_line(l = 0)
+    fitAll = fitFor = fitSav = add_trend_line(l = 0)
     fitFor = add_trend_line("forest", l = 10)
     fitSav = add_trend_line("savanna", l = 20)
     
     if (length(CAI_shade_ps)>1) {
-        if (CAI_shade_p == tail(CAI_shade_ps,1)) axis(4)
+        if (CAI_shade_p == tail(CAI_shade_ps,1)) axis(1)
         
-        side = 2
+        side = 3
     } else side = 3
     if (CAI_shade_p == CAI_shade_ps[1]) {
-        axis(2)
-        if (vcf_clumping > 100) txt = bquote(paste( .("Clumping   "), .(bquote(infinity))))
-            else  txt = paste("Clumping", vcf_clumping)
+        axis(3)
+        if (vcf_clumping > 100) txt = "Enforced clumping"#bquote(paste( .("Clumping   "), .(bquote(infinity))))
+            else if (vcf_clumping ==0) txt = "Unenforced clumping" else txt = paste("Clumping", vcf_clumping)
         mtext(side = side, txt, line = 2.2)
     }
-    if (length(vcf_clumpings)>1 && vcf_clumping == vcf_clumpings[1]) {        
-        mtext(side = 3, paste("Canopy overlap", CAI_shade_p), line = 2)
-        axis(3)
+    if (length(vcf_clumpings)>1 && vcf_clumping == vcf_clumpings[1]) {  
+        
+        if (CAI_shade_p==0) txt = "Unenforced overlap" else if(CAI_shade_p==1) txt = "Enforced overlap" 
+            else txt = paste("Canopy overlap", CAI_shade_p)
+        mtext(side = 2, txt, line = 2)
+        axis(2)
     }
-    if (vcf_clumping == tail(vcf_clumpings,1)) axis(1)
+    if (vcf_clumping == tail(vcf_clumpings,1)) axis(4)
     return(list(fitAll, fitFor, fitSav))
 }
 
@@ -344,7 +417,7 @@ run4Continent <- function(cont = NULL) {
     
     
     heights = c(rep(1, nrow(lmat)), 0.3)
-    lmat = rbind(lmat, max(lmat) + 1)
+    lmat = rbind(t(lmat), max(lmat) + 1)
     
     png(fname, height = 6*7.2/8, width = 7.2, res = 300, units = 'in')
         layout(lmat, heights = heights)
@@ -376,10 +449,10 @@ cols_clu =  make_col_vector(cols_clu, ncols = length(fits[[1]]))
 cols = lapply(cols_cai, function(col1) lapply(cols_clu, function(col2) make_col_vector(c(col1, col2), ncol =3)[2]))
 bestFit_fun <- function(fit, y0, type, col = "black", addParams = FALSE, name = '', ...) { 
     
-    bestFit(fit[[type]][[1]][,1], fit[[type]][[1]][, 2:4], 
+    out = bestFit(fit[[type]][[1]][,1], fit[[type]][[1]][, 2:4], 
             alpha = 0.8, col = col, summary = TRUE, ...)
-    bestFit(fit[[type]][[1]][,1], fit[[type]][[1]][, 5:7],
-            alpha = 0.97, col = col, lty = 2, summary = TRUE, ...)
+    #bestFit(fit[[type]][[1]][,1], fit[[type]][[1]][, 5:7],
+    #        alpha = 0.97, col = col, lty = 2, summary = TRUE, ...)
     
     if (addParams) {
         ys = 90 - y0 - c(0, 5)
@@ -390,25 +463,28 @@ bestFit_fun <- function(fit, y0, type, col = "black", addParams = FALSE, name = 
     }
     fname = paste0('outputs/stan-', name, '-', col, '.csv')
     write.csv(data.frame(fit[[type]][[2]]), file = fname)
+    fname = paste0('outputs/stan-', name, '-', col, '-crossing.csv')
+    write.csv(out, file = fname)
 }
 
-plotType <- function(type, name, addParams = FALSE) {
+plotType <- function(type, name, addParams = FALSE, ...) {
     plot.window()
     mtext(name, side = 3, line = -1)
     y0s = list(list(5, 17), list(31, 44))
     if (addParams) text(x = c(3, 18, 33), y = 90, c('5%', '50%', '95%'), adj = c(0, 0), cex = 0.67)
     mapply(function(i, j, k) mapply(bestFit_fun, i, j, k, type = type,
-                                    MoreArgs = list(addParams = addParams, name = name)),
+                                    MoreArgs = list(addParams = addParams, name = name), ...),
                                     fits, y0s, cols)
 }
 
+if (FALSE) {
 png("figs/Clumping_canopy_overlap_extremes.png", height = 6*7.2/8, width =7.2, res = 300, units = 'in')
     par(mfrow = c(2,2), mar = c(1, 1, 1, 0.5), oma = c(3, 4.5, 2.5, 1.5))
-    plotType(1, "All")
+    plotType(1, "All", switchXY = TRUE)
     axis(2)
-    plotType(2, "Forest")
+    plotType(2, "Forest", switchXY = TRUE)
     axis(1)
-    plotType(3, "Savanna", addParams = FALSE)
+    plotType(3, "Savanna", addParams = FALSE, switchXY = TRUE)
     axis(2)
     axis(1)
 
@@ -429,4 +505,33 @@ png("figs/Clumping_canopy_overlap_extremes.png", height = 6*7.2/8, width =7.2, r
 
     bestFit(c(0.1, 0.4), cbind(c(0.2, 0.2), c(0.25, 0.25), c(0.3, 0.3)), cols[[2]][[2]])
     text.units(adj = 0, x = 0.5, y = 0.25, paste("Clumping:", tail(vcf_clumpings,1), " \nCanopy overlap:", tail(CAI_shade_ps,1)))
+dev.off()
+}
+
+png("figs/Clumping_canopy_overlap_extremes-AllOnly.png", height = 7.2/1.2, width =7.2/2, res = 300, units = 'in')
+    par(mfrow = c(2,1), mar = c(3, 3, 0.5, 0.5))
+    plotType(1, "")
+    axis(2)
+    axis(1)
+
+    mtext("VCF corrected (%)", side = 2, line = 2)
+    mtext("VCF cover (%)", side = 1, line = 2)
+
+    par(mar = c(0.1, 0.1, 0.5, 0.5))
+    plot(c(0, 1), c(0, 1), type = 'n', axes = FALSE)
+    vcf_clumpings[vcf_clumpings>100] = "~infinity~"
+    text.units(adj = 0.5, x = 0.5, y = 0.97, "Clumping/Canopy overlap")
+
+    
+    bestFit(c(0.05, 0.3), cbind(c(0.8, 0.8), c(0.85, 0.85), c(0.9, 0.9)), cols[[1]][[1]])
+    text.units(adj = 0, x = 0.32, y = 0.85, "unenforced\n/unenforced", cex = 0.8)
+
+    bestFit(c(0.05, 0.3), cbind(c(0.65, 0.65), c(0.7, 0.7), c(0.75, 0.75)), cols[[2]][[1]])
+    text.units(adj = 0, x = 0.32, y = 0.69,  "enforced\n/unenforced", cex = 0.8)
+
+    bestFit(c(0.57, 0.80), cbind(c(0.8, 0.8), c(0.85, 0.85), c(0.9, 0.9)), cols[[1]][[2]])
+    text.units(adj = 0, x = 0.82, y = 0.85, "unenforced\n/enforced", cex = 0.8)
+
+    bestFit(c(0.57, 0.80), cbind(c(0.65, 0.65), c(0.7, 0.7), c(0.75, 0.75)), cols[[2]][[2]])
+    text.units(adj = 0, x = 0.82, y = 0.69, "enforced\n/enforced", cex = 0.8)
 dev.off()
