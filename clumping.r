@@ -25,11 +25,11 @@ plotFun <- function(name) {
 }
 png("figs/clumping.png", width = 7.2, height = 14.2, res = 300, units = 'in')
 par(mar = rep(0.5, 4), mfcol = c(2, 1))
-plotFun('Unenforced overlap')
+plotFun('Unenforced clumping')
 
 z[] = 0
 z[50:100,] = 1
 
-plotFun('Enforced overlap')
+plotFun('Enforced clumping')
 dev.off()
 
