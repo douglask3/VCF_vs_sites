@@ -16,7 +16,7 @@ col_choices  = c("savanna" = "#d95f02", "forest" = '#1b9e77')
 detail = 0.2 # 0.2
 VCF_grid_size = round(c(250,250) * detail) ## size of a vcf pixel
 TRB_grid_size = round(c(100,100) * detail) ## size of a trobit pixel
-n_bootstraps_grid_size  = 50  # 5 number of times we'll test the uncertanty
+n_bootstraps_grid_size  = 5  # 50 number of times we'll test the uncertanty
 pc_test_width = 0.01 # 0.01
 vcf_clumpings = c(0, 1000  ) # How "clumped" are the trees. 0 = no clumping
 CAI_shade_ps = c(0,  1)
@@ -34,7 +34,7 @@ grabe_cache = TRUE
 dat = read.csv( 'data/trobit_vcf_comparison.csv')
 
 #if (var == "trobit_pct")
-dat[, 'mvcf_pct'] = dat[,'mvcf_pct'] / 0.8
+dat[, 'mvcf_pct'] = dat[,'mvcf_pct'] #/ 0.8
 
 ## finds the probablity density of % cover of a VCF size grid based on a trobit measurement
 VCF_grid = matrix(0,VCF_grid_size[1], VCF_grid_size[1])
@@ -174,6 +174,7 @@ test_clumping <- function(vcf_clumping, CAI_shade_p = 0, cont = NULL) {
     if (length(CAI_shade_ps) <= 1) covert_from_VCF_grid(0.5, TRB_grid_size, TRUE)
     TRB_equivilent = t(sapply(dat[, 'mvcf_pct']/100, covert_from_VCF_grid, TRB_grid_size)*100)
     x = logit(dat[, 'mvcf_pct']/100)
+    browser()
     VCFfit <- function(...) {
         
         y = logit(apply(TRB_equivilent,1 , function(i) sample(pcs[i>0], 1, prob = i[i>0])))
@@ -259,7 +260,7 @@ test_clumping <- function(vcf_clumping, CAI_shade_p = 0, cont = NULL) {
         
         w = 1/(VCF_high - VCF_low)
         yf = logit(y);
-        temp_file = paste("temp/Stan-skew22-tau12_full", vcf_clumping, CAI_shade_p, cont, type, l, '.Rd', sep = '-')
+        temp_file = paste("temp/Stan-skew22-tau12_full-newPs5", vcf_clumping, CAI_shade_p, cont, type, l, '.Rd', sep = '-')
         
         #fit = nls(yf ~ a * xf + b, lower = list(a = 0, b = -9E9))
         #fit = lm(yf ~ xf, weights = w)
@@ -277,11 +278,16 @@ test_clumping <- function(vcf_clumping, CAI_shade_p = 0, cont = NULL) {
                  cores = 1,
                  refresh = 250,
                  init = rep(list(list(tau1 = 1, tau2 = 1, alpha = 0, beta = 1, sigma = 1)), 10),
-                 control = list(max_treedepth = 10,
-                                adapt_delta = 0.95))
+                 control = list(max_treedepth = 10, adapt_delta = 0.95))
             save(fit, file = temp_file)
+        }        
+        FUN_st <- function(x, k, tau, tau1, tau2, beta, rou) {
+            pow <- function(a, b) a^b  
+
+            fmin <- function(a, b) {a[a>b] = b; a}
+            -log(1/(fmin(k * pow(pow(pow(1-x, tau2)/pow(x, tau1), beta) +1, -rou), 1)) -1)
         }
-        
+        #browser()
         ## get the best fit and confidence out, and transform it back for plotting        
         params = data.frame( rstan::extract(fit))#data.frame(fit)
         
@@ -297,44 +303,36 @@ test_clumping <- function(vcf_clumping, CAI_shade_p = 0, cont = NULL) {
             #y = predict(fit, newdata = data.frame(xf = x),
             #            interval = "confidence")           
             
-            conf = apply(params, 1, function(i)
-                    i['alpha'] + i['beta']*log(x^i['tau1']/((1-x)^i['tau2'])))
+            conf = apply(params, 1, function(i) FUN_st(x, i['k'], i['tau'], i['tau1'], i['tau2'], i['beta'], i['rou'])) 
+            #        i['alpha'] + i['beta']*log(x^i['tau1']/((1-x)^i['tau2'])))
             
             
-            corSlim <- function(i, x) 
-                i['alpha'] + i['beta']*log(x^i['tau1']/((1-x)^i['tau2']))
+            corSlim <- function(i, x) FUN_st(x, i['k'], i['tau'], i['tau1'], i['tau2'], i['beta'], i['rou']) 
+            #    i['alpha'] + i['beta']*log(x^i['tau1']/((1-x)^i['tau2']))
             
             
             corFull <- function(i) {
-                out = i['VCF0'] + logit(x) * i['VCFD']
-                out = (out - i['alpha'])/i['beta']
-                out = out1 = exp(out)
-                test = is.infinite(out)
-                xt = seq(0.00, 1, 0.005)
-                x1 = xt^i['tau1']
-                x2 = (1-xt)^i['tau2']
-                out = sapply(out, function(i) xt[which.min(abs(i * x2 - x1))])
-             
-                
-                out[test] = 1 
-                out = logistic((logit(out) - i['VCF0'])/i['VCFD'])
+                vstar = FUN_st(x, i['k'], i['tau'], i['tau1'], i['tau2'], i['beta'], i['rou'])
+                vnorm = i['VCF0'] + i['VCFD'] * logit(x)
+                out = sapply(vnorm, function(i) x[which.min(abs(i-vstar))])
                 
                 return(out)
             }
                 #out = (corSlim(i)-i['VCF0'])/i['VCFD']
                 
             conf = apply(params, 1, corSlim, x)
+            
             conff = apply(params, 1, corFull)  
             
-            conf  = t(apply(conf , 1, quantile, c(0.1, 0.5, 0.9)))            
-            conff = t(apply(conff, 1, quantile, c(0.1, 0.5, 0.9)))            
+            conf  = t(apply(conf , 1, quantile, c(0.1, 0.5, 0.9), na.rm = TRUE))            
+            conff = t(apply(conff, 1, quantile, c(0.1, 0.5, 0.9), na.rm = TRUE))            
             
             pred = c()
             for (i in 1:100) 
                 pred = cbind(pred, apply(params, 1, function(i) 
                         i['alpha'] + i['beta']*log(x^i['tau1']/((1-x)^i['tau2'])) + rnorm(1, 0, i['sigma'])))
             #pred = posterior_predict(fit, newdata = data.frame(xf = x))
-            pred = t(apply(pred, 1, quantile, c(0.1, 0.5, 0.9)))
+            pred = t(apply(pred, 1, quantile, c(0.1, 0.5, 0.9), na.rm = TRUE))
             
             x = x*100
             #x    = logistic(x   )*100
@@ -408,7 +406,7 @@ test_clumping <- function(vcf_clumping, CAI_shade_p = 0, cont = NULL) {
 graphics.off()
 
 run4Continent <- function(cont = NULL) {
-    fname = paste0("figs/tribit_vs_VCF", '-', cont, ".png")
+    fname = paste0("figs/tribit_vs_VCF_newPs", '-', cont, ".png")
     if (is.null(CAI_shade_ps)) CAI_shade_ps = 0
     if (var == "CAI" && length(CAI_shade_ps) > 1)
         lmat = matrix(1:(length(vcf_clumpings) * length(CAI_shade_ps)), ncol = length(CAI_shade_ps))
@@ -478,7 +476,7 @@ plotType <- function(type, name, addParams = FALSE, ...) {
 }
 
 if (FALSE) {
-png("figs/Clumping_canopy_overlap_extremes.png", height = 6*7.2/8, width =7.2, res = 300, units = 'in')
+png("figs/Clumping_canopy_overlap_extremes-newPs.png", height = 6*7.2/8, width =7.2, res = 300, units = 'in')
     par(mfrow = c(2,2), mar = c(1, 1, 1, 0.5), oma = c(3, 4.5, 2.5, 1.5))
     plotType(1, "All", switchXY = TRUE)
     axis(2)
@@ -508,7 +506,7 @@ png("figs/Clumping_canopy_overlap_extremes.png", height = 6*7.2/8, width =7.2, r
 dev.off()
 }
 
-png("figs/Clumping_canopy_overlap_extremes-AllOnly.png", height = 7.2/1.2, width =7.2/2, res = 300, units = 'in')
+png("figs/Clumping_canopy_overlap_extremes-AllOnly-newPs.png", height = 7.2/1.2, width =7.2/2, res = 300, units = 'in')
     par(mfrow = c(2,1), mar = c(3, 3, 0.5, 0.5))
     plotType(1, "")
     axis(2)
