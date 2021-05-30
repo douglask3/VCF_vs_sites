@@ -35,3 +35,4 @@ Figure A2 is made using:
 while A3 using:
 
 >> source("clumping.r")
+ 
