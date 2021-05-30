@@ -94,16 +94,24 @@ bestFit <- function(x, y, col, alpha = 0.95, lty = 1, summary = FALSE, ..., swit
     
     findCross <- function(i) {
         diff = (i - x)
-        
-        crss = x[which((diff[-1] < 0) + (head(diff, -1) > 0)!=1)+1]
+        test = which((diff[-1] < 0) + (head(diff, -1) > 0)!=1)+1
+        crss = x[test]
+        crdiff = diff[test]
         
         if (logistize) crss = logistic(crss) * 100
         if (length(crss) == 0) crss = c(NaN, NaN, NaN)
         if (length(crss) == 1) crss = c(crss, NaN, NaN)
         if (length(crss) == 2) crss = c(crss, NaN)
         if (length(crss) != 3) {
-            print("oh no!")
-            browser()
+            if (sum(crdiff==0)>=3) {
+                test = crdiff == 0
+                crss = c(crss[which(test)[round(sum(test)/2)]], crss[!test])
+                if (length(crss) == 2) crss = c(crss, NaN)
+                if (length(crss) == 1) crss = c(crss, NaN, NaN)
+            } else {
+                print("oh no!")
+                browser()
+            }
         }
         return(crss)
     }
@@ -174,7 +182,7 @@ test_clumping <- function(vcf_clumping, CAI_shade_p = 0, cont = NULL) {
     if (length(CAI_shade_ps) <= 1) covert_from_VCF_grid(0.5, TRB_grid_size, TRUE)
     TRB_equivilent = t(sapply(dat[, 'mvcf_pct']/100, covert_from_VCF_grid, TRB_grid_size)*100)
     x = logit(dat[, 'mvcf_pct']/100)
-    browser()
+    #browser()
     VCFfit <- function(...) {
         
         y = logit(apply(TRB_equivilent,1 , function(i) sample(pcs[i>0], 1, prob = i[i>0])))
@@ -261,7 +269,7 @@ test_clumping <- function(vcf_clumping, CAI_shade_p = 0, cont = NULL) {
         w = 1/(VCF_high - VCF_low)
         yf = logit(y);
         temp_file = paste("temp/Stan-skew22-tau12_full-newPs5", vcf_clumping, CAI_shade_p, cont, type, l, '.Rd', sep = '-')
-        
+        #_cgap3
         #fit = nls(yf ~ a * xf + b, lower = list(a = 0, b = -9E9))
         #fit = lm(yf ~ xf, weights = w)
         
@@ -283,7 +291,6 @@ test_clumping <- function(vcf_clumping, CAI_shade_p = 0, cont = NULL) {
         }        
         FUN_st <- function(x, k, tau, tau1, tau2, beta, rou) {
             pow <- function(a, b) a^b  
-
             fmin <- function(a, b) {a[a>b] = b; a}
             -log(1/(fmin(k * pow(pow(pow(1-x, tau2)/pow(x, tau1), beta) +1, -rou), 1)) -1)
         }
@@ -313,9 +320,8 @@ test_clumping <- function(vcf_clumping, CAI_shade_p = 0, cont = NULL) {
             
             corFull <- function(i) {
                 vstar = FUN_st(x, i['k'], i['tau'], i['tau1'], i['tau2'], i['beta'], i['rou'])
-                vnorm = i['VCF0'] + i['VCFD'] * logit(x)
+                vnorm = (i['VCF0'] + i['VCFD'] * logit(x))*0.8/i['k']^(i['rou']/(1-i['rou']))
                 out = sapply(vnorm, function(i) x[which.min(abs(i-vstar))])
-                
                 return(out)
             }
                 #out = (corSlim(i)-i['VCF0'])/i['VCFD']
@@ -462,6 +468,7 @@ bestFit_fun <- function(fit, y0, type, col = "black", addParams = FALSE, name = 
     fname = paste0('outputs/stan-', name, '-', col, '.csv')
     write.csv(data.frame(fit[[type]][[2]]), file = fname)
     fname = paste0('outputs/stan-', name, '-', col, '-crossing.csv')
+    if (is.list(out)) out = do.call(cbind, out)
     write.csv(out, file = fname)
 }
 
