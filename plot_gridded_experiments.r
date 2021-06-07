@@ -2,6 +2,7 @@ source('libs/plotStandardMap.r')
 source("../LimFIRE/src/libs/biomeInfo.r")
 library(rasterExtras)
 library(gitBasedProjects)
+library(fields)
 graphics.off()
 
 #teow/ = '../LimFIRE/data/official_teow/official/'
@@ -9,6 +10,7 @@ cols = c('#ffffe5','#f7fcb9','#d9f0a3','#addd8e','#78c679','#41ab5d','#238443','
 limits = c(0, 1, 2, 5, 10, 20, 50)
 
 dcols = c('#40004b','#762a83','#9970ab','#c2a5cf','#f7f7f7','#a6dba0','#5aae61','#1b7837','#00441b')
+scols = c('#67001f','#b2182b','#d6604d','#f4a582','#fddbc7','#f7f7f7','#d1e5f0','#92c5de','#4393c3','#2166ac','#053061')
 dlimits = c(-12, -10, -8, -6, -4, -2, -1,0, 1, 2, 4, 6, 8, 10, 12)
 vegTypeNames = c("EG NL Forest", "EG BL Forest", "Dec NL Forest",
                     "Dec BL Forest", "Mixed Forest",
@@ -115,7 +117,7 @@ forMask <- function(id) {
     #control[is.na(biomeAssigned)] = NaN
     plotMap <- function(r, ...) {
         r0 = r
-    
+         
         plotStandardMap(r, ...)
         #contour(savanna, levels = 0.5, drawlabels = FALSE, add = TRUE)
         
@@ -126,9 +128,8 @@ forMask <- function(id) {
         height = 3.7, width = 7.2, units = 'in', res = 300)
         layout(rbind(c(1, 2), c(3, 4), c(5, 6), c(7, 8), 9), heights = c(1, 0.45, 1, 1, 0.45))
         par(mar = c(0, 0, 1.1, 0))
-        
         plotMap(100*control, cols = cols, limits = limits, title3 = 'VCF')
-    
+        
         exps = lapply(exps, function(i) 100*i[[1]])# (i - control) *100)
 
         area_tree <- function(r, byArea = FALSE) {
@@ -153,6 +154,42 @@ forMask <- function(id) {
         cat("\n\texp pc control\n")
         print(100-round(100*100*control_area_pc / (exp_area_pc+100*control_area_pc)))
         #browser() 
+        
+        ## this times data gap:
+        range = max(layer.apply(exps, function(i) max(i))) - 
+                min(layer.apply(exps, function(i) min(i)))
+        sites = read.csv("data/trobit_vcf_comparison.csv")[, c("longitude", "latitude")]        
+        dist = apply(sites, 1, function(i) raster::distanceFromPoints(control, i))
+        dist = min(layer.apply(dist, function(i) i))/1000
+        seamask = raster::resample(raster('data/seamask.nc'), control)
+        dist[seamask == 0] = NaN
+        post = dist*range
+        post = cut_results(post, quantile(post, seq(0, 1, 0.01),na.rm = T))
+        range_cols = cols
+        range_lims = c(0, 1, 5, 10, 15, 20, 25, 30)
+        dist_cols = c('#f7fcfd','#e0ecf4','#bfd3e6','#9ebcda','#8c96c6','#8c6bb1','#88419d','#6e016b')
+        dist_lims = c(0, 500, 1000, 1500, 2000, 3000, 4000, 5000, 6000,7000)
+        post_cols = c('#ffffd9','#edf8b1','#c7e9b4','#7fcdbb','#41b6c4','#1d91c0','#225ea8','#0c2c84')
+        post_lims = seq(0, 90, by = 10)
+        png(paste0("figs/priority_ites",id,".png"),
+        height = 4.5, width = 3.7, units = 'in', res = 300)
+        layout(rbind(1, 2, 3, 4, 5, 6), heights = c(1, 0.3, 1, 0.3, 1, 0.3))
+        par(mar = c(0, 0, 2, 0), oma = c(2, 0, 0, 0))
+        plotMap(range, col = range_cols, limits = range_lims, title3 = 'Uncertainty range')
+        par(mar = c(0, 0, 0, 0))        
+StandardLegend(range_cols, range_lims, range, extend_max = TRUE, units = '%', oneSideLabels = T, ylabposScling = 1)
+        par(mar = c(0, 0, 2, 0))
+        plotMap(dist, col = dist_cols, limits = dist_lims, title3 = 'Distance to sites')
+        par(mar = c(0, 0, 0, 0))
+        StandardLegend(dist_cols, dist_lims, dist, extend_max = TRUE, units = ' km ', oneSideLabels = T, ylabposScling = 0.67)
+        par(mar = c(0, 0, 2, 0))
+        #browser()
+        plotMap(post, col = post_cols, limits = post_lims, title3 = 'Site priority')
+        par(mar = c(0, 0, 0, 0))
+        StandardLegend(post_cols, post_lims, post, extend_max = FALSE, oneSideLabels = T,
+                       units = '', ylabposScling = 1, maxLab = 100)
+        mtext(side = 1, cex = 0.67, adj = 0.9, line = 0.67, 'percentile')
+        dev.off()
         sig = sum(layer.apply(exps, function(i)
                     (sum(i > 0)==3)))# + (sum(i[[c(1, 3)]]<0) == 2))
         sig2 =  sum(layer.apply(exps, function(i)
@@ -166,16 +203,17 @@ forMask <- function(id) {
 
         sig_cols = c('#8c510a','#bf812d','#dfc27d','#f6e8c3','#f5f5f5',
                     '#c7eae5','#80cdc1','#35978f','#01665e')
-        plotMap(sum(sig), cols = sig_cols, 
-                limits = -3.5:3.5, title3 = 'No. significant')
+        plotMap(sum(sig), cols = scols, 
+                limits = -3.5:3.5, title3 = '')#No. significant
         par(mar = c(0, 0, 0.33, 0))        
-        StandardLegend(cols, limits, 100*control, extend_max = FALSE, maxLab = 100, units = '%')
+        StandardLegend(cols, limits, 100*control, extend_max = FALSE, maxLab = 100, units = '%', ylabposScling = 0.67)
         
-        StandardLegend(sig_cols, -3.5:3.5, sig,
+        StandardLegend(scols, -3.5:3.5, sig,
                        labelss = c('', paste(c(4:0, 1:4), '            ')),
-                        extend_max = FALSE, ylabposScling = -0.67)
-        mtext(side = 3, line = -0.67, adj = 0.1, 'Significant decrease', cex = 0.67)
-        mtext(side = 3, line = -0.67, adj = 0.9, 'Significant increase', cex = 0.67)
+                        extend_max = FALSE, ylabposScling = -0.5)
+        mtext(side = 3, line = -0.67, adj = 0.1, 'Decrease', cex = 0.67)
+        mtext(side = 3, line = -0.67, adj = 0.5, 'No. significant scenarios', cex = 0.67)
+        mtext(side = 3, line = -0.67, adj = 0.9, 'Increase', cex = 0.67)
         
         par(mar = c(0, 0, 1.1, 0)) 
         
@@ -185,7 +223,7 @@ forMask <- function(id) {
         control = control*100       
         ehist = lapply(ehist, function(i) i + control)
         par(mar = c(0, 0, 0.33, 0))
-        StandardLegend(dcols, dlimits, exps[[2]], extend_min = TRUE, units = '%')
+        StandardLegend(dcols, dlimits, exps[[2]], extend_min = TRUE, units = '%', ylabposScling = 0.67)
     dev.off()
     breaks = seq(0, 130, 1)
 
