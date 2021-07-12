@@ -31,7 +31,7 @@ lineBox <- function(x, y, ...)
 plotStandardMap <- function(r, cols, limits, e = NULL, add_legend = FALSE,
                             limits_error = c(0.5, 0.500000001),
                             title2 = '', title3 = '', txt.col = "black",
-                            xlim = c(-120, 160), ylim = c(-30, 30),...) {
+                            xlim = c(-120, 160), ylim = c(-30, 30),quick = TRUE, ...) {
      
     if (nlayers(r) > 1 && is.null(e)) {
         if (nlayers(r) == 3) {
@@ -59,7 +59,7 @@ plotStandardMap <- function(r, cols, limits, e = NULL, add_legend = FALSE,
     grid()
     plot_raster_from_raster(r, e = e,interior = FALSE,#coast.lwd = NULL,
                             cols = cols, limits = limits, add_legend = FALSE,
-                            quick = TRUE, ePatternRes = 40, ePatternThick = 0.5,
+                            quick = quick, ePatternRes = 40, ePatternThick = 0.5,
                             limits_error = limits_error, add = TRUE, ...)
     
     #plot(rivers, col = c(rep("#FFFFFF00", 9), "black", rep("#FFFFFF00", 88)), add = TRUE, lwd = 2.5)
@@ -71,7 +71,7 @@ plotStandardMap <- function(r, cols, limits, e = NULL, add_legend = FALSE,
     #lineBox(-c(61.25, 53.75), -c(11.25,  6.25))   
     #lineBox(-c(48.25, 43.25), -c( 8.75,  1.25))
     #lineBox(-c(66.25, 58.75), -c(18.75, 13.75))
-    addCoastline()
+    addCoastline(quick = quick, r, ...)
     polygon(c(-62.5, -35, -35, -62.5), c(-56, -56, -50, -50), border = NA, col = "white")
     mtext(title3, adj = 0.01, line = 0, col = txt.col)
     mtext(title2, side = 2, line = -0.75, col = txt.col)
@@ -82,18 +82,20 @@ plotStandardMap <- function(r, cols, limits, e = NULL, add_legend = FALSE,
     }
 }
 
-addCoastline <- function() {
+addCoastline <- function(quick = TRUE, mask = NULL, ...) {
     
-    mask = raster('data/seamask.nc')
-    mask = mask>1
+    if (is.null(mask)) mask = raster('data/seamask.nc') else mask = (is.na(mask) + raster('data/seamask.nc'))>1
+   
+    if (!quick) mask = raster::disaggregate(mask, fact = 5, method = "bilinear")
+    mask = mask>0.5
     
     plot_raster_from_raster(mask+1, add = TRUE, 
                              cols = c("white", "transparent"),readyCut = TRUE,
                              limits =  NULL, quick = TRUE, interior = FALSE, 
-                             coast.lwd = NULL, add_legend = FALSE)
+                             coast.lwd = NULL, add_legend = FALSE, ...)
     #
     #contour(mask, add = TRUE, drawlabels = FALSE, lwd = 0.5)  
-
+    
     ployBox <- function(x, y)
         polygon(c(x[1], x[2], x[2], x[1]), c(y[1], y[1], y[2], y[2]), col = "white", border = "white")
         
