@@ -16,7 +16,7 @@ vegTypeNames = c("EG NL Forest", "EG BL Forest", "Dec NL Forest",
                     "Dec BL Forest", "Mixed Forest",
                     "Close Shrub", "Open Shrub", "Woody Savanna", "Savannas", "Grassland")
 forMask <- function(id) {
-    load(paste0("outputs/gridded_VCF_correction-stan-test2-mask", id, ".Rd"))
+    load(paste0("outputs/gridded_VCF_correction-stan-test2-mask-minMedMax-", id, ".Rd"))
     ### histogram
     
     conHist = exps[[1]][-(1:13)][1:10]
@@ -170,7 +170,7 @@ forMask <- function(id) {
         dist_cols = c('#f7fcfd','#e0ecf4','#bfd3e6','#9ebcda','#8c96c6','#8c6bb1','#88419d','#6e016b')
         dist_lims = c(0, 500, 1000, 1500, 2000, 3000, 4000, 5000, 6000,7000)
         post_cols = c('#ffffd9','#edf8b1','#c7e9b4','#7fcdbb','#41b6c4','#1d91c0','#225ea8','#0c2c84')
-        post_lims = seq(0, 90, by = 10)
+        post_lims = seq(0, 99, by = 1)
         png(paste0("figs/priority_ites",id,".png"),
         height = 4.5, width = 3.7, units = 'in', res = 300)
         layout(rbind(1, 2, 3, 4, 5, 6), heights = c(1, 0.3, 1, 0.3, 1, 0.3))
@@ -181,14 +181,18 @@ StandardLegend(range_cols, range_lims, range, extend_max = TRUE, units = '%', on
         par(mar = c(0, 0, 2, 0))
         plotMap(dist, col = dist_cols, limits = dist_lims, title3 = 'Distance to sites')
         par(mar = c(0, 0, 0, 0))
-        StandardLegend(dist_cols, dist_lims, dist, extend_max = TRUE, units = ' km ', oneSideLabels = T, ylabposScling = 0.67)
+        StandardLegend(dist_cols, dist_lims, dist, extend_max = TRUE, units = ' km ', oneSideLabels = T, ylabposScling = 1)
         par(mar = c(0, 0, 2, 0))
         #browser()
+        #dev.new()
         plotMap(post, col = post_cols, limits = post_lims, title3 = 'Site priority')
         par(mar = c(0, 0, 0, 0))
+        
         StandardLegend(post_cols, post_lims, post, extend_max = FALSE, oneSideLabels = T,
-                       units = '', ylabposScling = 1, maxLab = 100)
-        mtext(side = 1, cex = 0.67, adj = 0.9, line = 0.67, 'percentile')
+                       units = '', ylabposScling = 1, labelss = '')
+        #mtext(side = 1, cex = 0.67, adj = 0.9, line = 0.67, 'percentile')
+        mtext(side = 1, cex = 0.67, adj = 0.05, line = 0.0, 'Lowest priority')
+        mtext(side = 1, cex = 0.67, adj = 0.95, line = 0.0, 'Highest priority')
         dev.off()
         sig = sum(layer.apply(exps, function(i)
                     (sum(i > 0)==3)))# + (sum(i[[c(1, 3)]]<0) == 2))
@@ -206,7 +210,7 @@ StandardLegend(range_cols, range_lims, range, extend_max = TRUE, units = '%', on
         plotMap(sum(sig), cols = scols, 
                 limits = -3.5:3.5, title3 = '')#No. significant
         par(mar = c(0, 0, 0.33, 0))        
-        StandardLegend(cols, limits, 100*control, extend_max = FALSE, maxLab = 100, units = '%', ylabposScling = 0.67)
+        StandardLegend(cols, limits, 100*control, extend_max = FALSE, maxLab = 100, units = '%', ylabposScling = 1)
         
         StandardLegend(scols, -3.5:3.5, sig,
                        labelss = c('', paste(c(4:0, 1:4), '            ')),
@@ -223,7 +227,7 @@ StandardLegend(range_cols, range_lims, range, extend_max = TRUE, units = '%', on
         control = control*100       
         ehist = lapply(ehist, function(i) i + control)
         par(mar = c(0, 0, 0.33, 0))
-        StandardLegend(dcols, dlimits, exps[[2]], extend_min = TRUE, units = '%', ylabposScling = 0.67)
+        StandardLegend(dcols, dlimits, exps[[2]], extend_min = TRUE, units = '%', ylabposScling = 1)
     dev.off()
     breaks = seq(0, 130, 1)
 
